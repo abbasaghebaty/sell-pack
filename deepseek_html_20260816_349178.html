@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>داشبورد | آکادمی ادمین</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="dashboard">
+  <header id="site-header"></header>
+
+  <main class="container py-4">
+    <div class="dashboard-head">
+      <h1>داشبورد کاربری</h1>
+      <button id="logout-btn" class="btn btn-outline">خروج از حساب</button>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-value" id="stat-balance"></div><div class="stat-label">موجودی قابل برداشت</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-total-income"></div><div class="stat-label">درآمد کل</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-sales"></div><div class="stat-label">فروش موفق</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-clicks"></div><div class="stat-label">کلیک لینک</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-referrals"></div><div class="stat-label">تعداد معرفی‌ها</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-month"></div><div class="stat-label">پورسانت این ماه</div></div>
+    </div>
+
+    <div class="dashboard-grid">
+      <div class="chart-container">
+        <h3>درآمد هفته</h3>
+        <div id="chart" class="chart"></div>
+      </div>
+      <div class="referral-card">
+        <h3>لینک معرفی اختصاصی</h3>
+        <p>کد معرف شما: <span id="ref-code-display"></span></p>
+        <button id="copy-ref-link" class="btn btn-primary btn-sm">کپی لینک عمومی</button>
+      </div>
+    </div>
+
+    <section class="referral-links">
+      <h2>لینک‌های معرفی پکیج‌ها</h2>
+      <div id="referral-links-container"></div>
+    </section>
+  </main>
+
+  <footer id="site-footer"></footer>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/utils.js"></script>
+  <script src="assets/js/components.js"></script>
+  <script src="assets/js/dashboard.js"></script>
+</body>
+</html>

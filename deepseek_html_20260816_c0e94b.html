@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ورود / ثبت‌نام | آکادمی ادمین</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="auth">
+  <header id="site-header"></header>
+
+  <main class="auth-container">
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">ورود</button>
+        <button class="auth-tab" data-tab="register">ثبت‌نام</button>
+      </div>
+
+      <form id="login-form" class="auth-form">
+        <h2>ورود به حساب</h2>
+        <div class="form-group">
+          <label>شماره موبایل یا ایمیل</label>
+          <input type="text" id="login-identifier" class="form-control ltr" placeholder="09xxxxxxxxx">
+        </div>
+        <div class="form-group">
+          <label>رمز عبور</label>
+          <input type="password" id="login-password" class="form-control ltr">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">ورود</button>
+      </form>
+
+      <form id="register-form" class="auth-form" style="display:none">
+        <h2>ایجاد حساب کاربری</h2>
+        <div class="form-group">
+          <label>نام و نام خانوادگی</label>
+          <input type="text" id="reg-name" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>شماره موبایل</label>
+          <input type="tel" id="reg-mobile" class="form-control ltr">
+        </div>
+        <div class="form-group">
+          <label>ایمیل (اختیاری)</label>
+          <input type="email" id="reg-email" class="form-control ltr">
+        </div>
+        <div class="form-group">
+          <label>رمز عبور</label>
+          <input type="password" id="reg-password" class="form-control ltr">
+        </div>
+        <div class="form-group">
+          <label>کد معرف (اختیاری)</label>
+          <input type="text" id="reg-ref" class="form-control ltr" placeholder="AB1234">
+        </div>
+        <p class="form-note" id="ref-note"></p>
+        <button type="submit" class="btn btn-primary btn-block">ثبت‌نام</button>
+      </form>
+    </div>
+  </main>
+
+  <footer id="site-footer"></footer>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/utils.js"></script>
+  <script src="assets/js/components.js"></script>
+  <script src="assets/js/auth.js"></script>
+</body>
+</html>
