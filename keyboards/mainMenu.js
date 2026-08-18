@@ -2,7 +2,7 @@
  * Main Menu Reply Keyboard
  *
  * مسیر:
- * src/keyboards/mainMenu.js
+ * keyboards/mainMenu.js
  *
  * این فایل فقط مسئول ساخت منوی اصلی ربات است.
  * هیچ منطق دیتابیس، Handler، پرداخت یا Business Logic ندارد.
@@ -21,35 +21,31 @@ export function getMainMenuKeyboard() {
     keyboard: [
       [
         {
-          text: MAIN_MENU_BUTTONS.EARN_MONEY,
-          style: 'primary',
+          text: MAIN_MENU_BUTTONS.BUY_COURSE,
         },
         {
-          text: MAIN_MENU_BUTTONS.BUY_COURSE,
-          style: 'primary',
+          text: MAIN_MENU_BUTTONS.EARN_MONEY,
         },
       ],
 
       [
         {
-          text: MAIN_MENU_BUTTONS.ACCOUNT,
-          style: 'primary',
+          text: MAIN_MENU_BUTTONS.MY_COURSES,
         },
         {
-          text: MAIN_MENU_BUTTONS.MY_COURSES,
-          style: 'primary',
+          text: MAIN_MENU_BUTTONS.ACCOUNT,
         },
       ],
 
       [
         {
           text: MAIN_MENU_BUTTONS.SUPPORT,
-          style: 'danger',
         },
       ],
     ],
 
     resize_keyboard: true,
+    is_persistent: false,
   };
 }
 
