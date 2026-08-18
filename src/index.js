@@ -1,9 +1,34 @@
 /**
  * Telegram Bot - Main Worker
  *
- * این فایل نقطه ورود Cloudflare Worker است.
- * فعلاً فقط Webhook تلگرام را دریافت و اعتبارسنجی اولیه می‌کند.
+ * مسیر:
+ * src/index.js
+ *
+ * نقطه ورود Cloudflare Worker - دریافت و پردازش webhook تلگرام
  */
+
+import handleCommand from './handlers/commandHandler.js';
+import handleMessage from './handlers/messageHandler.js';
+
+async function processUpdate(update, env, db) {
+  const message = update.message;
+
+  if (!message || !message.chat) {
+    return;
+  }
+
+  const text = message.text || '';
+  const chatId = message.chat.id;
+
+  // شناسایی دستور یا پیام عادی
+  if (text.startsWith('/')) {
+    // دستور
+    await handleCommand(message, env, db);
+  } else {
+    // پیام عادی یا کلیک دکمه
+    await handleMessage(message, env, db);
+  }
+}
 
 export default {
   async fetch(request, env) {
@@ -12,25 +37,22 @@ export default {
     // فقط POST برای Webhook
     if (url.pathname === '/webhook') {
       if (request.method !== 'POST') {
-        return new Response('Method Not Allowed', {
-          status: 405,
-        });
+        return new Response('Method Not Allowed', { status: 405 });
       }
 
       try {
         const update = await request.json();
 
-        console.log('Telegram update received:', update);
+        // اتصال به دیتابیس D1
+        const db = env.DB;
 
-        return new Response('OK', {
-          status: 200,
-        });
+        // پردازش update
+        await processUpdate(update, env, db);
+
+        return new Response('OK', { status: 200 });
       } catch (error) {
         console.error('Webhook error:', error);
-
-        return new Response('Bad Request', {
-          status: 400,
-        });
+        return new Response('Bad Request', { status: 400 });
       }
     }
 
@@ -38,19 +60,14 @@ export default {
     if (url.pathname === '/') {
       return Response.json({
         success: true,
-        service: 'telegram-bot',
+        service: 'telegram-bot-sell-pack',
         status: 'online',
       });
     }
 
     return Response.json(
-      {
-        success: false,
-        error: 'Route not found',
-      },
-      {
-        status: 404,
-      }
+      { success: false, error: 'Route not found' },
+      { status: 404 },
     );
   },
 };
