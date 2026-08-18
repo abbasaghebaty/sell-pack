@@ -11,21 +11,28 @@ import { handleStartCommand } from '../commands/start.js';
 import { handleHelpCommand } from '../commands/help.js';
 
 export async function handleCommand(message, env, db) {
-  const text = message.text || '';
-  const chatId = message.chat.id;
+  try {
+    const text = message.text || '';
+    const chatId = message.chat.id;
 
-  // حذف @ برای دستورات مثل /start@botname
-  const command = text.split('@')[0].toLowerCase();
+    // حذف @ برای دستورات مثل /start@botname
+    const command = text.split('@')[0].toLowerCase();
 
-  switch (command) {
-    case '/start':
-      return handleStartCommand(chatId, message.from, env, db);
+    console.log(`Command detected: ${command}`);
 
-    case '/help':
-      return handleHelpCommand(chatId, env);
+    switch (command) {
+      case '/start':
+        return handleStartCommand(chatId, message.from, env, db);
 
-    default:
-      return null;
+      case '/help':
+        return handleHelpCommand(chatId, env);
+
+      default:
+        console.log(`Unknown command: ${command}`);
+        return null;
+    }
+  } catch (error) {
+    console.error('Command handler error:', error.message);
   }
 }
 
