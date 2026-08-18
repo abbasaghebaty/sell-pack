@@ -9,7 +9,7 @@
  */
 
 export const MAIN_MENU_BUTTONS = Object.freeze({
-  BUY_COURSE: '🛒 خرید دوره',
+  BUY_COURSE: '🛍 خرید دوره',
   MY_COURSES: '📚 دوره‌های من',
   EARN_MONEY: '💰 کسب درآمد',
   ACCOUNT: '👤 حساب کاربری',
