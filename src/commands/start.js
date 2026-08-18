@@ -8,7 +8,7 @@
  */
 
 import { sendMessage } from '../api/telegram.js';
-import getMainMenuKeyboard from '../../keyboards/mainMenu.js';
+import { getMainMenuKeyboard } from '../../keyboards/mainMenu.js';
 import { ensureUser } from '../database/users.js';
 
 export async function handleStartCommand(chatId, telegramUser, env, db) {
