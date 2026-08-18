@@ -1,4 +1,5 @@
-name = "name = 'sell-pack'"
+# wrangler.toml
+name = 'sell-pack'
 main = "src/index.js"
 compatibility_date = "2026-08-18"
 
