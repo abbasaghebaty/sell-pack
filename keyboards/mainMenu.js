@@ -22,24 +22,29 @@ export function getMainMenuKeyboard() {
       [
         {
           text: MAIN_MENU_BUTTONS.BUY_COURSE,
+          style: 'primary',
         },
         {
           text: MAIN_MENU_BUTTONS.EARN_MONEY,
+          style: 'primary',
         },
       ],
 
       [
         {
           text: MAIN_MENU_BUTTONS.MY_COURSES,
+          style: 'primary',
         },
         {
           text: MAIN_MENU_BUTTONS.ACCOUNT,
+          style: 'primary',
         },
       ],
 
       [
         {
           text: MAIN_MENU_BUTTONS.SUPPORT,
+          style: 'danger',
         },
       ],
     ],
@@ -48,5 +53,3 @@ export function getMainMenuKeyboard() {
     is_persistent: false,
   };
 }
-
-export default getMainMenuKeyboard;
