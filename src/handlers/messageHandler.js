@@ -9,7 +9,7 @@
 
 import { sendMessage } from '../api/telegram.js';
 import { MAIN_MENU_BUTTONS } from '../../keyboards/mainMenu.js';
-import getMainMenuKeyboard from '../../keyboards/mainMenu.js';
+import { getMainMenuKeyboard } from '../../keyboards/mainMenu.js';
 
 export async function handleMessage(message, env, db) {
   try {
