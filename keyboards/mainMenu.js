@@ -22,29 +22,29 @@ export function getMainMenuKeyboard() {
       [
         {
           text: MAIN_MENU_BUTTONS.BUY_COURSE,
-          style: 'primary', // آبی
+          style: 'primary',
         },
         {
           text: MAIN_MENU_BUTTONS.EARN_MONEY,
-          style: 'success', // سبز
+          style: 'primary',
         },
       ],
 
       [
         {
-          text: MAIN_MENU_BUTTONS.MY_COURSES,
-          style: 'primary', // آبی
+          text: MAIN_MENU_BUTTONS.ACCOUNT,
+          style: 'primary',
         },
         {
-          text: MAIN_MENU_BUTTONS.ACCOUNT,
-          style: 'primary', // آبی
+          text: MAIN_MENU_BUTTONS.MY_COURSES,
+          style: 'primary',
         },
       ],
 
       [
         {
           text: MAIN_MENU_BUTTONS.SUPPORT,
-          style: 'danger', // قرمز
+          style: 'danger',
         },
       ],
     ],
@@ -52,4 +52,5 @@ export function getMainMenuKeyboard() {
     resize_keyboard: true,
     is_persistent: false,
   };
+}
 }
