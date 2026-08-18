@@ -11,3 +11,8 @@ binding = "DB"
 database_name = "sell-pack"
 database_id = "2a89652a-61ca-4f50-a3ed-02a5e899aa73"
 
+[env.production]
+vars = { ENVIRONMENT = "production" }
+
+[env.development]
+vars = { ENVIRONMENT = "development" }
