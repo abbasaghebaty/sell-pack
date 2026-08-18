@@ -1,7 +1,7 @@
 /**
  * Telegram Bot - Main Worker
  *
- * مسیر:
+ * مسیر: 
  * src/index.js
  *
  * نقطه ورود Cloudflare Worker - دریافت و پردازش webhook تلگرام
