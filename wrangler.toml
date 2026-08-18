@@ -1,0 +1,11 @@
+name = "telegram-course-bot"
+main = "src/index.js"
+compatibility_date = "2026-08-18"
+
+[vars]
+ENVIRONMENT = "production"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "YOUR_D1_DATABASE_NAME"
+database_id = "YOUR_D1_DATABASE_ID"
