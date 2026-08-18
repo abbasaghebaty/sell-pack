@@ -5,10 +5,10 @@ compatibility_date = "2026-08-18"
 [vars]
 ENVIRONMENT = "production"
 
-# wrangler.toml
-name = 'sell-pack'
-
 [[d1_databases]]
 binding = "DB"
 database_name = "sell-pack"
 database_id = "2a89652a-61ca-4f50-a3ed-02a5e899aa73"
+
+# wrangler.toml
+name = 'sell-pack'
