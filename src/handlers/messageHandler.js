@@ -18,58 +18,79 @@ export async function handleMessage(message, env, db) {
     const botToken = env.TELEGRAM_BOT_TOKEN;
 
     if (!botToken) {
-      console.error('Bot token not available in handleMessage');
+      console.error('❌ Bot token not available in handleMessage');
       return;
     }
 
-    console.log(`Handling message: "${text}"`);
+    if (!chatId) {
+      console.error('❌ Chat ID not available');
+      return;
+    }
 
+    console.log(`💬 Handling message: "${text}"`);
+
+    // ✅ اینجا await استفاده میکنیم
     switch (text) {
       case MAIN_MENU_BUTTONS.BUY_COURSE:
-        return sendMessage(
+        return await sendMessage(
           botToken,
           chatId,
-          '🛒 دوره‌های موجود برای خرید:\n\n(بزودی)',
+          '🛒 <b>دوره‌های موجود برای خرید:</b>\n\n<i>(بزودی)</i>',
         );
 
       case MAIN_MENU_BUTTONS.MY_COURSES:
-        return sendMessage(
+        return await sendMessage(
           botToken,
           chatId,
-          '📚 دوره‌های شما:\n\n(بزودی)',
+          '📚 <b>دوره‌های شما:</b>\n\n<i>(بزودی)</i>',
         );
 
       case MAIN_MENU_BUTTONS.EARN_MONEY:
-        return sendMessage(
+        return await sendMessage(
           botToken,
           chatId,
-          '💰 برنامه کسب درآمد:\n\n(بزودی)',
+          '💰 <b>برنامه کسب درآمد:</b>\n\n<i>(بزودی)</i>',
         );
 
       case MAIN_MENU_BUTTONS.ACCOUNT:
-        return sendMessage(
+        return await sendMessage(
           botToken,
           chatId,
-          '👤 حساب کاربری:\n\n(بزودی)',
+          '👤 <b>حساب کاربری:</b>\n\n<i>(بزودی)</i>',
         );
 
       case MAIN_MENU_BUTTONS.SUPPORT:
-        return sendMessage(
+        return await sendMessage(
           botToken,
           chatId,
-          '❓ راهنما و پشتیبانی:\n\n(بزودی)',
+          '❓ <b>راهنما و پشتیبانی:</b>\n\n<i>(بزودی)</i>',
         );
 
       default:
-        return sendMessage(
+        console.log(`⚠️ Unknown message: "${text}"`);
+        return await sendMessage(
           botToken,
           chatId,
-          'متوجه نشدم! لطفاً از منوی زیر استفاده کنید.',
+          '🤔 متوجه نشدم! لطفاً از منوی زیر استفاده کنید.',
           getMainMenuKeyboard(),
         );
     }
   } catch (error) {
-    console.error('Error in handleMessage:', error);
+    console.error('❌ Error in handleMessage:', error.message, error.stack);
+    // ✅ اگر خطا بیفتد، سعی میکنیم پیام خطا بفرستیم
+    try {
+      const chatId = message?.chat?.id;
+      const botToken = env?.TELEGRAM_BOT_TOKEN;
+      if (chatId && botToken) {
+        await sendMessage(
+          botToken,
+          chatId,
+          '😞 متاسفانه خطایی رخ داد. لطفاً بعداً دوباره تلاش کنید.',
+        );
+      }
+    } catch (err) {
+      console.error('Failed to send error message:', err.message);
+    }
   }
 }
 
