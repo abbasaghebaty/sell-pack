@@ -22,29 +22,29 @@ export function getMainMenuKeyboard() {
       [
         {
           text: MAIN_MENU_BUTTONS.BUY_COURSE,
-          style: 'primary',
+          style: 'primary', // آبی
         },
         {
           text: MAIN_MENU_BUTTONS.EARN_MONEY,
-          style: 'primary',
+          style: 'success', // سبز
         },
       ],
 
       [
         {
           text: MAIN_MENU_BUTTONS.MY_COURSES,
-          style: 'primary',
+          style: 'primary', // آبی
         },
         {
           text: MAIN_MENU_BUTTONS.ACCOUNT,
-          style: 'primary',
+          style: 'primary', // آبی
         },
       ],
 
       [
         {
           text: MAIN_MENU_BUTTONS.SUPPORT,
-          style: 'danger',
+          style: 'danger', // قرمز
         },
       ],
     ],
