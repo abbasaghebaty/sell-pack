@@ -1,4 +1,4 @@
-name = "telegram-course-bot"
+name = "name = 'sell-pack'"
 main = "src/index.js"
 compatibility_date = "2026-08-18"
 
@@ -10,5 +10,3 @@ binding = "DB"
 database_name = "sell-pack"
 database_id = "2a89652a-61ca-4f50-a3ed-02a5e899aa73"
 
-# wrangler.toml
-name = 'sell-pack'
