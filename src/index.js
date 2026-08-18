@@ -11,22 +11,31 @@ import handleCommand from './handlers/commandHandler.js';
 import handleMessage from './handlers/messageHandler.js';
 
 async function processUpdate(update, env, db) {
-  const message = update.message;
+  try {
+    const message = update.message;
 
-  if (!message || !message.chat) {
-    return;
-  }
+    if (!message || !message.chat) {
+      console.log('No message or chat in update');
+      return;
+    }
 
-  const text = message.text || '';
-  const chatId = message.chat.id;
+    const text = message.text || '';
+    const chatId = message.chat.id;
 
-  // شناسایی دستور یا پیام عادی
-  if (text.startsWith('/')) {
-    // دستور
-    await handleCommand(message, env, db);
-  } else {
-    // پیام عادی یا کلیک دکمه
-    await handleMessage(message, env, db);
+    console.log(`Processing message: "${text}" from chat ${chatId}`);
+
+    // شناسایی دستور یا پیام عادی
+    if (text.startsWith('/')) {
+      // دستور
+      console.log(`Command detected: ${text}`);
+      await handleCommand(message, env, db);
+    } else if (text) {
+      // پیام عادی یا کلیک دکمه
+      console.log(`Regular message detected`);
+      await handleMessage(message, env, db);
+    }
+  } catch (error) {
+    console.error('Error in processUpdate:', error.message, error.stack);
   }
 }
 
@@ -41,7 +50,15 @@ export default {
       }
 
       try {
+        // بررسی توکن
+        if (!env.TELEGRAM_BOT_TOKEN) {
+          console.error('TELEGRAM_BOT_TOKEN not set!');
+          return new Response('OK', { status: 200 });
+        }
+
         const update = await request.json();
+
+        console.log('Update received:', JSON.stringify(update, null, 2));
 
         // اتصال به دیتابیس D1
         const db = env.DB;
@@ -49,10 +66,12 @@ export default {
         // پردازش update
         await processUpdate(update, env, db);
 
+        // همیشه 200 برگردانیم تا تلگرام خوشحال باشد
         return new Response('OK', { status: 200 });
       } catch (error) {
-        console.error('Webhook error:', error);
-        return new Response('Bad Request', { status: 400 });
+        console.error('Webhook error:', error.message, error.stack);
+        // حتی اگر خطا باشد، 200 برگردانیم
+        return new Response('OK', { status: 200 });
       }
     }
 
@@ -62,6 +81,7 @@ export default {
         success: true,
         service: 'telegram-bot-sell-pack',
         status: 'online',
+        bot_token_set: !!env.TELEGRAM_BOT_TOKEN,
       });
     }
 
