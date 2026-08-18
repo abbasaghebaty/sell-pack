@@ -21,22 +21,22 @@ export function getMainMenuKeyboard() {
     keyboard: [
       [
         {
-          text: MAIN_MENU_BUTTONS.BUY_COURSE,
+          text: MAIN_MENU_BUTTONS.EARN_MONEY,
           style: 'primary',
         },
         {
-          text: MAIN_MENU_BUTTONS.MY_COURSES,
+          text: MAIN_MENU_BUTTONS.BUY_COURSE,
           style: 'primary',
         },
       ],
 
       [
         {
-          text: MAIN_MENU_BUTTONS.EARN_MONEY,
+          text: MAIN_MENU_BUTTONS.ACCOUNT,
           style: 'primary',
         },
         {
-          text: MAIN_MENU_BUTTONS.ACCOUNT,
+          text: MAIN_MENU_BUTTONS.MY_COURSES,
           style: 'primary',
         },
       ],
@@ -50,8 +50,5 @@ export function getMainMenuKeyboard() {
     ],
 
     resize_keyboard: true,
-    is_persistent: true,
   };
 }
-
-export default getMainMenuKeyboard;
