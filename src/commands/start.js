@@ -14,14 +14,28 @@ import { ensureUser } from '../database/users.js';
 export async function handleStartCommand(chatId, telegramUser, env, db) {
   const botToken = env.TELEGRAM_BOT_TOKEN;
 
+  if (!botToken) {
+    console.error('Bot token not available');
+    return;
+  }
+
   try {
-    // اطمینان از وجود کاربر در دیتابیس
-    const result = await ensureUser(db, telegramUser);
+    console.log(`Start command for user: ${telegramUser.id}`);
+
+    // اگر DB موجود نیست، فقط پیام بفرستیم
+    if (db) {
+      try {
+        const result = await ensureUser(db, telegramUser);
+        console.log(`User ensured: ${telegramUser.id}, isNew: ${result.isNew}`);
+      } catch (dbError) {
+        console.warn('Database error (but continuing):', dbError.message);
+      }
+    } else {
+      console.warn('Database not available');
+    }
 
     const firstName = telegramUser.first_name || 'دوست';
-    const welcomeMessage = result.isNew
-      ? `سلام <b>${firstName}</b>! 👋\n\nخوش آمدید به فروشگاه دوره‌های آنلاین! 🎓`
-      : `خوش برگشتی <b>${firstName}</b>! 👋`;
+    const welcomeMessage = `سلام <b>${firstName}</b>! 👋\n\nخوش آمدید به فروشگاه دوره‌های آنلاین! 🎓`;
 
     return sendMessage(
       botToken,
@@ -30,12 +44,16 @@ export async function handleStartCommand(chatId, telegramUser, env, db) {
       getMainMenuKeyboard(),
     );
   } catch (error) {
-    console.error('Start command error:', error);
-    return sendMessage(
-      botToken,
-      chatId,
-      'متاسفانه خطایی رخ داد. لطفاً بعداً دوباره تلاش کنید.',
-    );
+    console.error('Start command error:', error.message, error.stack);
+    try {
+      return sendMessage(
+        botToken,
+        chatId,
+        'متاسفانه خطایی رخ داد. لطفاً بعداً دوباره تلاش کنید.',
+      );
+    } catch (sendError) {
+      console.error('Failed to send error message:', sendError);
+    }
   }
 }
 
