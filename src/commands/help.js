@@ -12,8 +12,13 @@ import { sendMessage } from '../api/telegram.js';
 export async function handleHelpCommand(chatId, env) {
   const botToken = env.TELEGRAM_BOT_TOKEN;
 
-  const helpText = `
-<b>🆘 راهنما</b>
+  if (!botToken) {
+    console.error('Bot token not available in help command');
+    return;
+  }
+
+  try {
+    const helpText = `<b>🆘 راهنما</b>
 
 اینجا راهنمایی برای استفاده از ربات:
 
@@ -34,14 +39,16 @@ export async function handleHelpCommand(chatId, env) {
 
 <b>دستورات:</b>
 /start - شروع ربات
-/help - این راهنما
-  `;
+/help - این راهنما`;
 
-  return sendMessage(
-    botToken,
-    chatId,
-    helpText,
-  );
+    return sendMessage(
+      botToken,
+      chatId,
+      helpText,
+    );
+  } catch (error) {
+    console.error('Help command error:', error.message);
+  }
 }
 
 export default handleHelpCommand;
