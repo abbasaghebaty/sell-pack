@@ -53,4 +53,3 @@ export function getMainMenuKeyboard() {
     is_persistent: false,
   };
 }
-}
