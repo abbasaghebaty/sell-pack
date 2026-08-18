@@ -10,7 +10,9 @@
 
 export const MAIN_MENU_BUTTONS = Object.freeze({
   BUY_COURSE: '🛍 خرید دوره',
+  MY_COURSES: '📚 دوره‌های من',
   EARN_MONEY: '💰 کسب درآمد',
+  ACCOUNT: '👤 حساب کاربری',
   SUPPORT: '❓ راهنما و پشتیبانی',
 });
 
@@ -24,6 +26,17 @@ export function getMainMenuKeyboard() {
         },
         {
           text: MAIN_MENU_BUTTONS.BUY_COURSE,
+          style: 'primary',
+        },
+      ],
+
+      [
+        {
+          text: MAIN_MENU_BUTTONS.ACCOUNT,
+          style: 'primary',
+        },
+        {
+          text: MAIN_MENU_BUTTONS.MY_COURSES,
           style: 'primary',
         },
       ],
