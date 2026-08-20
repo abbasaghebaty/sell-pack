@@ -1,5 +1,5 @@
 /**
- * Earn Money Keyboard
+ * EndMark Earn Money Keyboard
  *
  * مسیر:
  * keyboards/earnMoney.js
@@ -11,10 +11,6 @@ export const EARN_MONEY_BUTTONS = Object.freeze({
   BACK: '🔙 بازگشت',
 });
 
-
-/**
- * منوی کسب درآمد
- */
 export function getEarnMoneyKeyboard() {
   return {
     keyboard: [
@@ -32,20 +28,18 @@ export function getEarnMoneyKeyboard() {
       ],
     ],
     resize_keyboard: true,
+    is_persistent: false,
   };
 }
 
-
-/**
- * بعد از زدن درخواست ثبت حساب
- */
 export function getAdminApplicationStartKeyboard() {
   return {
     keyboard: [
       [
         {
-          text: EARN_MONEY_BUTTONS.COURSE_PURCHASED,
-          style: 'primary',
+          text:
+            EARN_MONEY_BUTTONS.COURSE_PURCHASED,
+          style: 'success',
         },
       ],
       [
@@ -56,13 +50,10 @@ export function getAdminApplicationStartKeyboard() {
       ],
     ],
     resize_keyboard: true,
+    is_persistent: false,
   };
 }
 
-
-/**
- * مرحله دریافت نام و نام خانوادگی
- */
 export function getAdminApplicationBackKeyboard() {
   return {
     keyboard: [
@@ -74,13 +65,10 @@ export function getAdminApplicationBackKeyboard() {
       ],
     ],
     resize_keyboard: true,
+    is_persistent: false,
   };
 }
 
-
-/**
- * مرحله دریافت شماره تلفن
- */
 export function getAdminApplicationPhoneKeyboard() {
   return {
     keyboard: [
@@ -88,6 +76,7 @@ export function getAdminApplicationPhoneKeyboard() {
         {
           text: '📱 ارسال شماره همین حساب',
           request_contact: true,
+          style: 'primary',
         },
       ],
       [
@@ -98,5 +87,6 @@ export function getAdminApplicationPhoneKeyboard() {
       ],
     ],
     resize_keyboard: true,
+    is_persistent: false,
   };
 }
