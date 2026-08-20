@@ -9,8 +9,5 @@ export const BOT_ADMINS = Object.freeze([
   8842657623,
 ]);
 
-/*
- * کانال خصوصی بررسی درخواست‌های ادمینی
- */
 export const ADMIN_APPLICATION_CHANNEL_ID =
   -1004295854315;
