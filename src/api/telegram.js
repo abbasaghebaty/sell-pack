@@ -11,10 +11,6 @@ const TELEGRAM_API =
 const REQUEST_TIMEOUT =
   10000;
 
-
-/**
- * درخواست عمومی به Telegram API
- */
 async function telegramRequest(
   botToken,
   method,
@@ -33,10 +29,10 @@ async function telegramRequest(
     new AbortController();
 
   const timeoutId =
-    setTimeout(() => {
-      controller.abort();
-    }, REQUEST_TIMEOUT);
-
+    setTimeout(
+      () => controller.abort(),
+      REQUEST_TIMEOUT
+    );
 
   try {
     const response =
@@ -58,7 +54,6 @@ async function telegramRequest(
         }
       );
 
-
     const responseText =
       await response.text();
 
@@ -73,7 +68,6 @@ async function telegramRequest(
       );
     }
 
-
     if (!response.ok) {
       throw new Error(
         `Telegram HTTP ${response.status}: ${
@@ -82,7 +76,6 @@ async function telegramRequest(
         }`
       );
     }
-
 
     if (!result?.ok) {
       throw new Error(
@@ -93,13 +86,12 @@ async function telegramRequest(
       );
     }
 
-
     return result;
 
   } catch (error) {
-
     if (
-      error?.name === 'AbortError'
+      error?.name ===
+      'AbortError'
     ) {
       throw new Error(
         'Telegram API request timed out'
@@ -113,10 +105,6 @@ async function telegramRequest(
   }
 }
 
-
-/**
- * ارسال پیام
- */
 export async function sendMessage(
   botToken,
   chatId,
@@ -147,12 +135,10 @@ export async function sendMessage(
     parse_mode: 'HTML',
   };
 
-
   if (replyMarkup) {
     payload.reply_markup =
       replyMarkup;
   }
-
 
   return await telegramRequest(
     botToken,
@@ -161,10 +147,6 @@ export async function sendMessage(
   );
 }
 
-
-/**
- * پاسخ به Callback Query
- */
 export async function answerCallbackQuery(
   botToken,
   callbackQueryId,
@@ -182,7 +164,6 @@ export async function answerCallbackQuery(
       callbackQueryId,
   };
 
-
   if (
     typeof text === 'string' &&
     text.trim()
@@ -192,14 +173,12 @@ export async function answerCallbackQuery(
       Boolean(showAlert);
   }
 
-
   return await telegramRequest(
     botToken,
     'answerCallbackQuery',
     payload
   );
 }
-
 
 export default {
   sendMessage,
