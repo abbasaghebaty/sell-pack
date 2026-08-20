@@ -5,27 +5,29 @@
  * src/api/telegram.js
  */
 
-const API_URL = 'https://api.telegram.org';
-const REQUEST_TIMEOUT = 10000;
+const TELEGRAM_API =
+  'https://api.telegram.org';
 
-function createTimeoutError() {
-  return new Error('Telegram request timeout');
-}
+const REQUEST_TIMEOUT =
+  10000;
 
-async function sendRequest(
+
+/**
+ * درخواست عمومی به Telegram API
+ */
+async function telegramRequest(
   botToken,
   method,
-  data
+  payload = {}
 ) {
   if (
     typeof botToken !== 'string' ||
     !botToken.trim()
   ) {
-    throw new Error('Bot token is required');
+    throw new Error(
+      'Telegram bot token is required'
+    );
   }
-
-  const url =
-    `${API_URL}/bot${botToken}/${method}`;
 
   const controller =
     new AbortController();
@@ -35,36 +37,42 @@ async function sendRequest(
       controller.abort();
     }, REQUEST_TIMEOUT);
 
+
   try {
-    console.log(
-      `🔄 Telegram API: ${method}`
-    );
+    const response =
+      await fetch(
+        `${TELEGRAM_API}/bot${botToken}/${method}`,
+        {
+          method: 'POST',
 
-    const response = await fetch(
-      url,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-        signal: controller.signal,
-      }
-    );
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
 
-    const rawText =
+          body:
+            JSON.stringify(payload),
+
+          signal:
+            controller.signal,
+        }
+      );
+
+
+    const responseText =
       await response.text();
 
     let result;
 
     try {
       result =
-        JSON.parse(rawText);
+        JSON.parse(responseText);
     } catch {
       throw new Error(
-        `Telegram returned invalid JSON. HTTP ${response.status}`
+        `Invalid Telegram response. HTTP ${response.status}`
       );
     }
+
 
     if (!response.ok) {
       throw new Error(
@@ -75,18 +83,16 @@ async function sendRequest(
       );
     }
 
+
     if (!result?.ok) {
       throw new Error(
         `Telegram API error: ${
           result?.description ||
-          'Unknown Telegram error'
+          'Unknown error'
         }`
       );
     }
 
-    console.log(
-      `✅ Telegram API success: ${method}`
-    );
 
     return result;
 
@@ -95,13 +101,10 @@ async function sendRequest(
     if (
       error?.name === 'AbortError'
     ) {
-      throw createTimeoutError();
+      throw new Error(
+        'Telegram API request timed out'
+      );
     }
-
-    console.error(
-      `❌ Telegram API failed (${method}):`,
-      error.message
-    );
 
     throw error;
 
@@ -110,43 +113,58 @@ async function sendRequest(
   }
 }
 
+
+/**
+ * ارسال پیام
+ */
 export async function sendMessage(
   botToken,
   chatId,
   text,
-  keyboard = null
+  replyMarkup = null
 ) {
   if (
     chatId === undefined ||
     chatId === null
   ) {
-    throw new Error('Chat ID is required');
+    throw new Error(
+      'Chat ID is required'
+    );
   }
 
   if (
     typeof text !== 'string' ||
     !text.trim()
   ) {
-    throw new Error('Message text is required');
+    throw new Error(
+      'Message text is required'
+    );
   }
 
-  const data = {
+  const payload = {
     chat_id: chatId,
     text,
     parse_mode: 'HTML',
   };
 
-  if (keyboard) {
-    data.reply_markup = keyboard;
+
+  if (replyMarkup) {
+    payload.reply_markup =
+      replyMarkup;
   }
 
-  return await sendRequest(
+
+  return await telegramRequest(
     botToken,
     'sendMessage',
-    data
+    payload
   );
 }
 
+
+/**
+ * پاسخ به Callback Query
+ */
 export async function answerCallbackQuery(
   botToken,
   callbackQueryId,
@@ -159,27 +177,29 @@ export async function answerCallbackQuery(
     );
   }
 
-  const data = {
+  const payload = {
     callback_query_id:
       callbackQueryId,
   };
+
 
   if (
     typeof text === 'string' &&
     text.trim()
   ) {
-    data.text = text;
-    data.show_alert = Boolean(
-      showAlert
-    );
+    payload.text = text;
+    payload.show_alert =
+      Boolean(showAlert);
   }
 
-  return await sendRequest(
+
+  return await telegramRequest(
     botToken,
     'answerCallbackQuery',
-    data
+    payload
   );
 }
+
 
 export default {
   sendMessage,
