@@ -42,6 +42,9 @@ function escapeHtml(value) {
 }
 
 
+/*
+ * دکمه‌های کانال
+ */
 function getReviewKeyboard(
   applicationId
 ) {
@@ -66,6 +69,9 @@ function getReviewKeyboard(
 }
 
 
+/*
+ * ارسال درخواست به کانال
+ */
 export async function sendApplicationToChannel(
   botToken,
   applicationId,
@@ -78,11 +84,23 @@ export async function sendApplicationToChannel(
 
   const text =
     `🔔 <b>New Admin Application</b>\n\n` +
-    `🆔 <b>Application:</b> <code>#${applicationId}</code>\n\n` +
-    `👤 <b>Name:</b> ${escapeHtml(application.first_name)} ${escapeHtml(application.last_name)}\n` +
-    `📱 <b>Phone:</b> ${escapeHtml(application.phone)}\n` +
-    `🔗 <b>Username:</b> ${username}\n` +
-    `🆔 <b>Telegram ID:</b> <code>${application.telegram_id}</code>\n\n` +
+
+    `🆔 <b>Application:</b> ` +
+    `<code>#${applicationId}</code>\n\n` +
+
+    `👤 <b>Name:</b> ` +
+    `${escapeHtml(application.first_name)} ` +
+    `${escapeHtml(application.last_name)}\n` +
+
+    `📱 <b>Phone:</b> ` +
+    `${escapeHtml(application.phone)}\n` +
+
+    `🔗 <b>Username:</b> ` +
+    `${username}\n` +
+
+    `🆔 <b>Telegram ID:</b> ` +
+    `<code>${application.telegram_id}</code>\n\n` +
+
     `📌 <b>Status:</b> Pending`;
 
   return await sendMessage(
@@ -94,6 +112,9 @@ export async function sendApplicationToChannel(
 }
 
 
+/*
+ * Callback Query
+ */
 export async function handleAdminApplicationCallback(
   callbackQuery,
   env,
@@ -108,6 +129,9 @@ export async function handleAdminApplicationCallback(
   const data =
     callbackQuery.data || '';
 
+  /*
+   * فقط مدیر اصلی
+   */
   if (
     !BOT_ADMINS.includes(adminId)
   ) {
@@ -120,6 +144,7 @@ export async function handleAdminApplicationCallback(
 
     return;
   }
+
 
   const [action, idText] =
     data.split(':');
@@ -140,6 +165,7 @@ export async function handleAdminApplicationCallback(
     return;
   }
 
+
   const application =
     await getAdminApplicationById(
       db,
@@ -157,6 +183,10 @@ export async function handleAdminApplicationCallback(
     return;
   }
 
+
+  /*
+   * قبلاً تعیین تکلیف شده
+   */
   if (
     application.status !== 'pending'
   ) {
@@ -174,31 +204,55 @@ export async function handleAdminApplicationCallback(
   /*
    * ACCEPT
    */
-  if (action === 'admin_accept') {
-    await createAdmin(
-      db,
-      {
-        telegram_id:
-          application.telegram_id,
+  if (
+    action === 'admin_accept'
+  ) {
+    try {
+      await createAdmin(
+        db,
+        {
+          telegram_id:
+            application.telegram_id,
 
-        username:
-          application.username,
+          username:
+            application.username,
 
-        first_name:
-          application.first_name,
+          first_name:
+            application.first_name,
 
-        last_name:
-          application.last_name,
-      }
-    );
+          last_name:
+            application.last_name,
+        }
+      );
 
-    await updateAdminApplicationStatus(
-      db,
-      applicationId,
-      'approved',
-      adminId
-    );
+      await updateAdminApplicationStatus(
+        db,
+        applicationId,
+        'approved',
+        adminId
+      );
 
+    } catch (error) {
+      console.error(
+        '❌ Accept application error:',
+        error.message,
+        error.stack
+      );
+
+      await answerCallbackQuery(
+        botToken,
+        callbackQuery.id,
+        'Failed to accept',
+        true
+      );
+
+      return;
+    }
+
+
+    /*
+     * پیام به کاربر
+     */
     try {
       await sendMessage(
         botToken,
@@ -214,6 +268,10 @@ export async function handleAdminApplicationCallback(
       );
     }
 
+
+    /*
+     * تغییر پیام کانال
+     */
     const channelMessage =
       callbackQuery.message;
 
@@ -224,22 +282,31 @@ export async function handleAdminApplicationCallback(
         channelMessage.message_id,
 
         `✅ <b>Admin Application Approved</b>\n\n` +
-        `🆔 Application: <code>#${application.id}</code>\n` +
-        `👤 ${escapeHtml(application.first_name)} ${escapeHtml(application.last_name)}\n` +
+
+        `🆔 Application: ` +
+        `<code>#${application.id}</code>\n` +
+
+        `👤 ${escapeHtml(application.first_name)} ` +
+        `${escapeHtml(application.last_name)}\n` +
+
         `🔗 @${escapeHtml(application.username || 'none')}\n\n` +
+
         `📌 <b>Status:</b> Approved\n` +
-        `👮 <b>Reviewed by:</b> <code>${adminId}</code>`,
+        `👮 <b>Reviewed by:</b> ` +
+        `<code>${adminId}</code>`,
 
         {
           inline_keyboard: [],
         }
       );
+
     } catch (error) {
       console.error(
         '❌ Failed to edit channel message:',
         error.message
       );
     }
+
 
     await answerCallbackQuery(
       botToken,
@@ -254,27 +321,29 @@ export async function handleAdminApplicationCallback(
   /*
    * REJECT
    */
-  if (action === 'admin_reject') {
+  if (
+    action === 'admin_reject'
+  ) {
     const channelMessage =
       callbackQuery.message;
 
-    await setUserState(
-      db,
-      adminId,
-      USER_STATES.WAITING_FOR_ADMIN_REJECTION_REASON,
-      {
-        application_id:
-          applicationId,
-
-        channel_chat_id:
-          channelMessage.chat.id,
-
-        channel_message_id:
-          channelMessage.message_id,
-      }
-    );
-
     try {
+      await setUserState(
+        db,
+        adminId,
+        USER_STATES.WAITING_FOR_ADMIN_REJECTION_REASON,
+        {
+          application_id:
+            applicationId,
+
+          channel_chat_id:
+            channelMessage.chat.id,
+
+          channel_message_id:
+            channelMessage.message_id,
+        }
+      );
+
       await sendMessage(
         botToken,
         adminId,
@@ -288,10 +357,12 @@ export async function handleAdminApplicationCallback(
             'Write rejection reason',
         }
       );
+
     } catch (error) {
       console.error(
-        '❌ Failed to request rejection reason:',
-        error.message
+        '❌ Failed to start rejection:',
+        error.message,
+        error.stack
       );
 
       await clearUserState(
@@ -309,6 +380,7 @@ export async function handleAdminApplicationCallback(
       return;
     }
 
+
     await answerCallbackQuery(
       botToken,
       callbackQuery.id,
@@ -318,6 +390,7 @@ export async function handleAdminApplicationCallback(
     return;
   }
 
+
   await answerCallbackQuery(
     botToken,
     callbackQuery.id
@@ -325,6 +398,9 @@ export async function handleAdminApplicationCallback(
 }
 
 
+/*
+ * دریافت دلیل رد
+ */
 export async function handleAdminRejectionReason(
   message,
   env,
@@ -343,13 +419,17 @@ export async function handleAdminRejectionReason(
   const data =
     state?.data || {};
 
-  if (!reason) {
+
+  if (
+    !reason
+  ) {
     return await sendMessage(
       botToken,
       adminId,
       '❌ لطفاً دلیل رد درخواست را بنویس.'
     );
   }
+
 
   const applicationId =
     Number(data.application_id);
@@ -373,6 +453,7 @@ export async function handleAdminRejectionReason(
     );
   }
 
+
   if (
     application.status !== 'pending'
   ) {
@@ -388,6 +469,10 @@ export async function handleAdminRejectionReason(
     );
   }
 
+
+  /*
+   * ثبت Reject
+   */
   await updateAdminApplicationStatus(
     db,
     applicationId,
@@ -395,15 +480,21 @@ export async function handleAdminRejectionReason(
     adminId
   );
 
+
+  /*
+   * ارسال دلیل برای کاربر
+   */
   try {
     await sendMessage(
       botToken,
       application.telegram_id,
 
       `❌ <b>درخواست ادمینی شما رد شد.</b>\n\n` +
+
       `📝 <b>دلیل رد:</b>\n` +
       `${escapeHtml(reason)}`
     );
+
   } catch (error) {
     console.error(
       '❌ Failed to notify rejected user:',
@@ -411,6 +502,10 @@ export async function handleAdminRejectionReason(
     );
   }
 
+
+  /*
+   * آپدیت پیام کانال
+   */
   if (
     data.channel_chat_id &&
     data.channel_message_id
@@ -422,18 +517,28 @@ export async function handleAdminRejectionReason(
         data.channel_message_id,
 
         `❌ <b>Admin Application Rejected</b>\n\n` +
-        `🆔 Application: <code>#${application.id}</code>\n` +
-        `👤 ${escapeHtml(application.first_name)} ${escapeHtml(application.last_name)}\n` +
+
+        `🆔 Application: ` +
+        `<code>#${application.id}</code>\n` +
+
+        `👤 ${escapeHtml(application.first_name)} ` +
+        `${escapeHtml(application.last_name)}\n` +
+
         `🔗 @${escapeHtml(application.username || 'none')}\n\n` +
+
         `📌 <b>Status:</b> Rejected\n\n` +
+
         `📝 <b>Reason:</b>\n` +
         `${escapeHtml(reason)}\n\n` +
-        `👮 <b>Reviewed by:</b> <code>${adminId}</code>`,
+
+        `👮 <b>Reviewed by:</b> ` +
+        `<code>${adminId}</code>`,
 
         {
           inline_keyboard: [],
         }
       );
+
     } catch (error) {
       console.error(
         '❌ Failed to update channel message:',
@@ -442,10 +547,12 @@ export async function handleAdminRejectionReason(
     }
   }
 
+
   await clearUserState(
     db,
     adminId
   );
+
 
   return await sendMessage(
     botToken,
