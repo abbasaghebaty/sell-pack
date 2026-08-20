@@ -3,51 +3,57 @@
  *
  * مسیر:
  * src/commands/help.js
- *
- * این فایل دستور /help را هندل می‌کند.
  */
 
-import { sendMessage } from '../api/telegram.js';
+import {
+  sendMessage,
+} from '../api/telegram.js';
 
-export async function handleHelpCommand(chatId, env) {
-  const botToken = env.TELEGRAM_BOT_TOKEN;
+export async function handleHelpCommand(
+  chatId,
+  env
+) {
+  const botToken =
+    env.TELEGRAM_BOT_TOKEN;
 
   if (!botToken) {
-    console.error('Bot token not available in help command');
+    console.error(
+      '❌ Bot token not available'
+    );
     return;
   }
 
   try {
-    const helpText = `<b>🆘 راهنما</b>
+    const helpText =
+      `<b>🆘 راهنمای EndMark</b>\n\n` +
 
-اینجا راهنمایی برای استفاده از ربات:
+      `<b>🛒 خرید دوره</b>\n` +
+      `مشاهده و پیگیری مسیر خرید دوره.\n\n` +
 
-<b>🛒 خرید دوره</b>
-برای خریداری دوره‌های آنلاین اینجا رو بزنید
+      `<b>💰 کسب درآمد</b>\n` +
+      `اطلاعات همکاری و ثبت درخواست ادمینی.\n\n` +
 
-<b>📚 دوره‌های من</b>
-دوره‌هایی که خریداری کرده‌اید را ببینید
+      `<b>🔎 استعلام ادمین</b>\n` +
+      `بررسی معتبر بودن ادمین‌ها.\n\n` +
 
-<b>💰 کسب درآمد</b>
-اطلاعات برنامه همکاری و کسب درآمد
+      `<b>❓ پشتیبانی</b>\n` +
+      `دریافت راهنمایی و پشتیبانی.\n\n` +
 
-<b>👤 حساب کاربری</b>
-مشاهده و ویرایش اطلاعات حساب
+      `<b>دستورات:</b>\n` +
+      `/start - شروع ربات\n` +
+      `/help - راهنما`;
 
-<b>❓ راهنما و پشتیبانی</b>
-تماس با تیم پشتیبانی
-
-<b>دستورات:</b>
-/start - شروع ربات
-/help - این راهنما`;
-
-    return sendMessage(
+    return await sendMessage(
       botToken,
       chatId,
-      helpText,
+      helpText
     );
+
   } catch (error) {
-    console.error('Help command error:', error.message);
+    console.error(
+      '❌ Help command error:',
+      error.message
+    );
   }
 }
 
