@@ -11,11 +11,13 @@ import {
 } from './adminApplicationHandler.js';
 
 import {
+  handleAdminRejectionReason,
+} from './adminApplicationReviewHandler.js';
+
+import {
   EARN_MONEY_BUTTONS,
   getEarnMoneyKeyboard,
   getAdminApplicationStartKeyboard,
-  getAdminApplicationBackKeyboard,
-  getAdminApplicationPhoneKeyboard,
 } from '../../keyboards/earnMoney.js';
 
 import {
@@ -45,6 +47,7 @@ import {
   clearUserState,
 } from '../database/userStates.js';
 
+
 /*
  * Username
  */
@@ -53,18 +56,23 @@ function extractUsername(text) {
     return null;
   }
 
-  const value = text.trim();
+  const value =
+    text.trim();
 
   if (
     /^@?[a-zA-Z0-9_]{5,32}$/.test(
       value
     )
   ) {
-    return value.replace(/^@/, '');
+    return value.replace(
+      /^@/,
+      ''
+    );
   }
 
   return null;
 }
+
 
 /*
  * Telegram ID
@@ -74,31 +82,54 @@ function extractTelegramId(text) {
     return null;
   }
 
-  const value = text.trim();
+  const value =
+    text.trim();
 
-  if (/^\d{5,15}$/.test(value)) {
+  if (
+    /^\d{5,15}$/.test(value)
+  ) {
     return Number(value);
   }
 
   return null;
 }
 
+
 /*
  * HTML escape
  */
 function escapeHtml(value) {
   return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(
+      /&/g,
+      '&amp;'
+    )
+    .replace(
+      /</g,
+      '&lt;'
+    )
+    .replace(
+      />/g,
+      '&gt;'
+    )
+    .replace(
+      /"/g,
+      '&quot;'
+    )
+    .replace(
+      /'/g,
+      '&#039;'
+    );
 }
+
 
 /*
  * Main menu
  */
-async function showMainMenu(message, env) {
+async function showMainMenu(
+  message,
+  env
+) {
   const firstName =
     escapeHtml(
       message.from?.first_name ||
@@ -117,10 +148,14 @@ async function showMainMenu(message, env) {
   );
 }
 
+
 /*
  * Course menu
  */
-async function showCourseMenu(message, env) {
+async function showCourseMenu(
+  message,
+  env
+) {
   return await sendMessage(
     env.TELEGRAM_BOT_TOKEN,
     message.chat.id,
@@ -133,6 +168,7 @@ async function showCourseMenu(message, env) {
     getCourseMenuKeyboard()
   );
 }
+
 
 /*
  * Start admin verification
@@ -158,6 +194,7 @@ async function startAdminVerification(
       USER_STATES.WAITING_FOR_ADMIN_VERIFICATION,
       {}
     );
+
   } catch (error) {
     console.error(
       '❌ Failed to set verification state:',
@@ -167,6 +204,7 @@ async function startAdminVerification(
     return await sendMessage(
       env.TELEGRAM_BOT_TOKEN,
       message.chat.id,
+
       '❌ در ذخیره وضعیت درخواست مشکلی پیش آمد. لطفاً دوباره تلاش کنید.'
     );
   }
@@ -176,15 +214,19 @@ async function startAdminVerification(
     message.chat.id,
 
     `🔎 <b>استعلام معتبر بودن ادمین</b>\n\n` +
+
     `یکی از موارد زیر را ارسال کنید:\n\n` +
+
     `• آیدی عددی ادمین\n` +
     `• یوزرنیم ادمین\n` +
     `• یا یک پیام از طرف همان ادمین را فوروارد کنید.\n\n` +
+
     `سیستم EndMark پس از دریافت اطلاعات، وضعیت ادمین را بررسی می‌کند.`,
 
     getAdminVerificationKeyboard()
   );
 }
+
 
 /*
  * Verification input
@@ -210,16 +252,20 @@ async function handleAdminVerificationInput(
     return await sendMessage(
       botToken,
       chatId,
+
       '❌ دیتابیس در دسترس نیست.',
+
       getAdminVerificationKeyboard()
     );
   }
+
 
   /*
    * Back
    */
   if (
-    text === COURSE_MENU_BUTTONS.BACK
+    text ===
+    COURSE_MENU_BUTTONS.BACK
   ) {
     await clearUserState(
       db,
@@ -231,6 +277,7 @@ async function handleAdminVerificationInput(
       env
     );
   }
+
 
   /*
    * Forwarded message
@@ -258,9 +305,12 @@ async function handleAdminVerificationInput(
           chatId,
 
           `✅ <b>ادمین معتبر است</b>\n\n` +
+
           `این ادمین توسط <b>EndMark</b> تأیید شده است.\n\n` +
+
           `👤 ادمین:\n` +
-          `<b>@${escapeHtml(admin.admin_username)}</b>\n\n` +
+          `<b>@${escapeHtml(admin.username || 'ندارد')}</b>\n\n` +
+
           `با اطمینان بیشتری می‌توانید با این ادمین همکاری کنید.`,
 
           getAdminVerificationKeyboard()
@@ -272,7 +322,9 @@ async function handleAdminVerificationInput(
         chatId,
 
         `❌ <b>این ادمین تأیید نشده است</b>\n\n` +
+
         `اطلاعات این ادمین در فهرست ادمین‌های معتبر EndMark پیدا نشد.\n\n` +
+
         `⚠️ قبل از هرگونه پرداخت، حتماً از معتبر بودن فرد اطمینان حاصل کنید.`,
 
         getAdminVerificationKeyboard()
@@ -284,11 +336,13 @@ async function handleAdminVerificationInput(
       chatId,
 
       `⚠️ <b>امکان شناسایی فرستنده اصلی وجود ندارد.</b>\n\n` +
+
       `لطفاً آیدی عددی یا یوزرنیم ادمین را مستقیم ارسال کنید.`,
 
       getAdminVerificationKeyboard()
     );
   }
+
 
   /*
    * Telegram ID
@@ -309,9 +363,11 @@ async function handleAdminVerificationInput(
         chatId,
 
         `✅ <b>ادمین معتبر است</b>\n\n` +
+
         `این ادمین توسط <b>EndMark</b> تأیید شده است.\n\n` +
+
         `👤 ادمین:\n` +
-        `<b>@${escapeHtml(admin.admin_username)}</b>`,
+        `<b>@${escapeHtml(admin.username || 'ندارد')}</b>`,
 
         getAdminVerificationKeyboard()
       );
@@ -322,11 +378,13 @@ async function handleAdminVerificationInput(
       chatId,
 
       `❌ <b>این ادمین معتبر نیست</b>\n\n` +
+
       `این آیدی در فهرست ادمین‌های تأییدشده EndMark پیدا نشد.`,
 
       getAdminVerificationKeyboard()
     );
   }
+
 
   /*
    * Username
@@ -347,9 +405,11 @@ async function handleAdminVerificationInput(
         chatId,
 
         `✅ <b>ادمین معتبر است</b>\n\n` +
+
         `این ادمین توسط <b>EndMark</b> تأیید شده است.\n\n` +
+
         `👤 ادمین:\n` +
-        `<b>@${escapeHtml(admin.admin_username)}</b>`,
+        `<b>@${escapeHtml(admin.username || 'ندارد')}</b>`,
 
         getAdminVerificationKeyboard()
       );
@@ -360,18 +420,22 @@ async function handleAdminVerificationInput(
       chatId,
 
       `❌ <b>این ادمین معتبر نیست</b>\n\n` +
+
       `این یوزرنیم در فهرست ادمین‌های تأییدشده EndMark پیدا نشد.`,
 
       getAdminVerificationKeyboard()
     );
   }
 
+
   return await sendMessage(
     botToken,
     chatId,
 
     `❌ <b>فرمت واردشده صحیح نیست.</b>\n\n` +
+
     `لطفاً یکی از موارد زیر را ارسال کنید:\n\n` +
+
     `• آیدی عددی ادمین\n` +
     `• یوزرنیم ادمین\n` +
     `• پیام فورواردشده از ادمین`,
@@ -379,6 +443,7 @@ async function handleAdminVerificationInput(
     getAdminVerificationKeyboard()
   );
 }
+
 
 /*
  * Main message handler
@@ -411,8 +476,10 @@ export default async function handleMessage(
     console.error(
       '❌ TELEGRAM_BOT_TOKEN missing'
     );
+
     return;
   }
+
 
   /*
    * /start
@@ -432,12 +499,13 @@ export default async function handleMessage(
     );
   }
 
+
   /*
-   * Back must work even if
-   * no database exists.
+   * Back
    */
   if (
-    text === COURSE_MENU_BUTTONS.BACK
+    text ===
+    COURSE_MENU_BUTTONS.BACK
   ) {
     if (db) {
       try {
@@ -459,11 +527,9 @@ export default async function handleMessage(
     );
   }
 
+
   /*
-   * Read state.
-   *
-   * اگر D1 خطا داشته باشد،
-   * ربات کاملاً از کار نمی‌افتد.
+   * Read state
    */
   let userState = null;
 
@@ -474,6 +540,7 @@ export default async function handleMessage(
           db,
           userId
         );
+
     } catch (error) {
       console.error(
         '❌ Failed to read user state:',
@@ -484,11 +551,31 @@ export default async function handleMessage(
     }
   }
 
+
   const currentState =
     userState?.state ?? null;
 
   const currentData =
     userState?.data ?? {};
+
+
+  /*
+   * Admin rejection reason
+   *
+   * این بخش باید قبل از فرم‌های معمولی بررسی شود.
+   */
+  if (
+    currentState ===
+    USER_STATES.WAITING_FOR_ADMIN_REJECTION_REASON
+  ) {
+    return await handleAdminRejectionReason(
+      message,
+      env,
+      db,
+      userState
+    );
+  }
+
 
   /*
    * Admin application states
@@ -496,16 +583,21 @@ export default async function handleMessage(
   const applicationStates =
     new Set([
       USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
+
       USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME,
+
       USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME,
+
       USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE,
     ]);
+
 
   if (
     applicationStates.has(
       currentState
     )
   ) {
+
     /*
      * Purchase confirmation
      */
@@ -534,6 +626,7 @@ export default async function handleMessage(
       );
     }
 
+
     return await handleAdminApplication(
       message,
       env,
@@ -542,6 +635,7 @@ export default async function handleMessage(
       currentData
     );
   }
+
 
   /*
    * Admin verification state
@@ -557,6 +651,7 @@ export default async function handleMessage(
     );
   }
 
+
   /*
    * Buy course
    */
@@ -569,6 +664,7 @@ export default async function handleMessage(
       env
     );
   }
+
 
   /*
    * Verify admin
@@ -584,6 +680,7 @@ export default async function handleMessage(
     );
   }
 
+
   /*
    * Earn money
    */
@@ -596,14 +693,19 @@ export default async function handleMessage(
       chatId,
 
       `💰 <b>کسب درآمد با EndMark</b>\n\n` +
+
       `اگر قصد دارید به عنوان ادمین با EndMark همکاری کنید، می‌توانید درخواست ثبت حساب ادمینی خود را ارسال کنید.\n\n` +
+
       `برای ثبت درخواست، ابتدا باید دوره آموزشی را خریداری کرده باشید.\n\n` +
+
       `پس از ارسال درخواست، اطلاعات شما توسط تیم EndMark بررسی خواهد شد.\n\n` +
+
       `برای شروع، گزینه زیر را انتخاب کنید.`,
 
       getEarnMoneyKeyboard()
     );
   }
+
 
   /*
    * Apply as admin
@@ -623,6 +725,7 @@ export default async function handleMessage(
       );
     }
 
+
     try {
       await setUserState(
         db,
@@ -630,6 +733,7 @@ export default async function handleMessage(
         USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
         {}
       );
+
     } catch (error) {
       console.error(
         '❌ Failed to save application state:',
@@ -646,17 +750,21 @@ export default async function handleMessage(
       );
     }
 
+
     return await sendMessage(
       botToken,
       chatId,
 
       `📝 <b>ثبت درخواست حساب ادمینی</b>\n\n` +
+
       `برای ثبت درخواست همکاری با EndMark، ابتدا باید دوره را خریداری کرده باشید.\n\n` +
+
       `اگر دوره را خریداری کرده‌اید، گزینه زیر را انتخاب کنید.`,
 
       getAdminApplicationStartKeyboard()
     );
   }
+
 
   /*
    * Support
@@ -670,11 +778,13 @@ export default async function handleMessage(
       chatId,
 
       `❓ <b>راهنما و پشتیبانی</b>\n\n` +
+
       `برای دریافت راهنمایی و پشتیبانی، با تیم EndMark در ارتباط باشید.`,
 
       getMainMenuKeyboard()
     );
   }
+
 
   /*
    * Unknown text
