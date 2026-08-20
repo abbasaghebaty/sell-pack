@@ -14,6 +14,10 @@
  * - ارسال اعلان برای ادمین‌های اصلی
  */
 
+import {
+  createAdminApplication,
+} from '../database/adminApplications.js';
+
 import { sendMessage } from '../api/telegram.js';
 
 import {
