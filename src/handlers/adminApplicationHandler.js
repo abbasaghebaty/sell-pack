@@ -5,18 +5,19 @@
  * src/handlers/adminApplicationHandler.js
  *
  * مسئول:
- * - ثبت درخواست حساب ادمینی
+ * - شروع فرم ثبت حساب ادمینی
  * - دریافت نام
  * - دریافت نام خانوادگی
  * - دریافت شماره تلفن
- * - نگهداری State فرم
+ * - ذخیره موقت اطلاعات
+ * - ثبت Application در D1
+ * - ارسال اعلان برای ادمین‌های اصلی
  */
 
 import { sendMessage } from '../api/telegram.js';
 
 import {
   EARN_MONEY_BUTTONS,
-  getAdminApplicationStartKeyboard,
   getAdminApplicationBackKeyboard,
   getAdminApplicationPhoneKeyboard,
 } from '../../keyboards/earnMoney.js';
@@ -24,26 +25,47 @@ import {
 import {
   USER_STATES,
   setUserState,
+  clearUserState,
 } from '../database/userStates.js';
+
+import {
+  createAdminApplication,
+  getPendingAdminApplicationByUserId,
+} from '../database/adminApplications.js';
+
+import {
+  ensureUser,
+} from '../database/users.js';
+
+import {
+  BOT_ADMINS,
+} from '../config/admins.js';
 
 
 /**
- * =====================================================
- * شروع درخواست
- * =====================================================
+ * شروع ثبت درخواست
  */
-
 export async function startAdminApplication(
   message,
   env,
   db
 ) {
+  if (!db) {
+    return await sendMessage(
+      env.TELEGRAM_BOT_TOKEN,
+      message.chat.id,
+      '❌ در حال حاضر امکان ثبت درخواست وجود ندارد. لطفاً بعداً دوباره تلاش کنید.'
+    );
+  }
+
 
   await setUserState(
     db,
     message.from.id,
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME
+    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME,
+    {}
   );
+
 
   return await sendMessage(
     env.TELEGRAM_BOT_TOKEN,
@@ -53,8 +75,7 @@ export async function startAdminApplication(
 
 برای شروع فرآیند ثبت درخواست، لطفاً <b>نام واقعی</b> خود را وارد کنید.
 
-⚠️ نام و نام خانوادگی باید واقعی و متعلق به خودتان باشد.
-در صورت وارد کردن اطلاعات نادرست، درخواست شما ممکن است رد شود.`,
+⚠️ اطلاعات واردشده باید واقعی و متعلق به خودتان باشد.`,
 
     getAdminApplicationBackKeyboard()
   );
@@ -62,18 +83,204 @@ export async function startAdminApplication(
 
 
 /**
- * =====================================================
- * پردازش فرم
- * =====================================================
+ * اعتبارسنجی نام
  */
+function validateName(
+  value,
+  fieldName
+) {
+  if (!value) {
+    return `${fieldName} وارد نشده است.`;
+  }
 
+  if (value.length < 2) {
+    return `${fieldName} باید حداقل ۲ کاراکتر داشته باشد.`;
+  }
+
+  if (value.length > 100) {
+    return `${fieldName} بیش از حد طولانی است.`;
+  }
+
+  return null;
+}
+
+
+/**
+ * نرمال‌سازی شماره
+ */
+function normalizePhone(
+  value
+) {
+  if (!value) {
+    return null;
+  }
+
+  let phone =
+    String(value)
+      .trim()
+      .replace(/[^\d+]/g, '');
+
+
+  /*
+   * اجازه فقط یک + در ابتدای شماره
+   */
+  if (
+    phone.includes('+') &&
+    !phone.startsWith('+')
+  ) {
+    phone =
+      phone.replace(/\+/g, '');
+  }
+
+
+  /*
+   * حذف +های اضافی
+   */
+  if (phone.startsWith('+')) {
+    phone =
+      '+' +
+      phone
+        .slice(1)
+        .replace(/\+/g, '');
+  } else {
+    phone =
+      phone.replace(/\+/g, '');
+  }
+
+
+  if (
+    phone.length < 8 ||
+    phone.length > 16
+  ) {
+    return null;
+  }
+
+  return phone;
+}
+
+
+/**
+ * فرار دادن HTML
+ */
+function escapeHtml(
+  value
+) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+
+/**
+ * مخفی کردن بخشی از شماره تلفن
+ */
+function maskPhone(
+  phone
+) {
+  if (!phone) {
+    return 'نامشخص';
+  }
+
+  if (phone.length <= 7) {
+    return phone;
+  }
+
+  return (
+    phone.slice(0, 4) +
+    '****' +
+    phone.slice(-3)
+  );
+}
+
+
+/**
+ * ارسال درخواست برای ادمین‌های اصلی
+ */
+async function notifyBotAdmins(
+  message,
+  env,
+  application
+) {
+  if (!Array.isArray(BOT_ADMINS)) {
+    return;
+  }
+
+  if (!BOT_ADMINS.length) {
+    console.warn(
+      '⚠️ BOT_ADMINS is empty'
+    );
+
+    return;
+  }
+
+
+  const username =
+    message.from.username
+      ? `@${escapeHtml(message.from.username)}`
+      : 'ندارد';
+
+
+  const adminUsername =
+    application.adminUsername
+      ? `@${escapeHtml(application.adminUsername)}`
+      : 'ندارد';
+
+
+  const text =
+    `🔔 <b>درخواست جدید ثبت حساب ادمینی</b>
+
+👤 <b>نام:</b>
+${escapeHtml(application.firstName)}
+
+👤 <b>نام خانوادگی:</b>
+${escapeHtml(application.lastName)}
+
+📱 <b>شماره:</b>
+${escapeHtml(maskPhone(application.phoneNumber))}
+
+🆔 <b>Telegram ID:</b>
+<code>${escapeHtml(message.from.id)}</code>
+
+🔗 <b>Username:</b>
+${username}
+
+👨‍💼 <b>ادمین معرفی‌شده:</b>
+${adminUsername}
+
+📌 <b>وضعیت:</b>
+در انتظار بررسی`;
+
+
+  for (const adminId of BOT_ADMINS) {
+    try {
+      await sendMessage(
+        env.TELEGRAM_BOT_TOKEN,
+        adminId,
+        text
+      );
+    } catch (error) {
+      console.error(
+        `❌ Failed to notify admin ${adminId}:`,
+        error.message
+      );
+    }
+  }
+}
+
+
+/**
+ * پردازش فرم
+ */
 export async function handleAdminApplication(
   message,
   env,
   db,
-  currentState
+  currentState,
+  currentData = {}
 ) {
-
   const botToken =
     env.TELEGRAM_BOT_TOKEN;
 
@@ -87,24 +294,33 @@ export async function handleAdminApplication(
     message.text?.trim();
 
 
-  /**
-   * =====================================================
-   * مرحله نام
-   * =====================================================
+  /*
+   * اگر کاربر دکمه بازگشت را بزند،
+   * messageHandler قبل از رسیدن به اینجا
+   * State را پاک می‌کند.
    */
 
+
+  /**
+   * مرحله نام
+   */
   if (
     currentState ===
     USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME
   ) {
 
-    if (!text) {
+    const error =
+      validateName(
+        text,
+        'نام'
+      );
 
+    if (error) {
       return await sendMessage(
         botToken,
         chatId,
 
-        `❌ <b>نام وارد نشده است.</b>
+        `❌ <b>${escapeHtml(error)}</b>
 
 لطفاً نام واقعی خود را وارد کنید.`,
 
@@ -116,7 +332,10 @@ export async function handleAdminApplication(
     await setUserState(
       db,
       userId,
-      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME,
+      {
+        firstName: text,
+      }
     );
 
 
@@ -126,9 +345,7 @@ export async function handleAdminApplication(
 
       `✅ نام دریافت شد.
 
-حالا لطفاً <b>نام خانوادگی واقعی</b> خود را وارد کنید.
-
-⚠️ لطفاً از نام مستعار یا اطلاعات غیرواقعی استفاده نکنید.`,
+حالا لطفاً <b>نام خانوادگی واقعی</b> خود را وارد کنید.`,
 
       getAdminApplicationBackKeyboard()
     );
@@ -136,25 +353,50 @@ export async function handleAdminApplication(
 
 
   /**
-   * =====================================================
    * مرحله نام خانوادگی
-   * =====================================================
    */
-
   if (
     currentState ===
     USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME
   ) {
 
-    if (!text) {
+    const error =
+      validateName(
+        text,
+        'نام خانوادگی'
+      );
+
+    if (error) {
+      return await sendMessage(
+        botToken,
+        chatId,
+
+        `❌ <b>${escapeHtml(error)}</b>
+
+لطفاً نام خانوادگی واقعی خود را وارد کنید.`,
+
+        getAdminApplicationBackKeyboard()
+      );
+    }
+
+
+    const firstName =
+      currentData.firstName;
+
+
+    if (!firstName) {
+      await setUserState(
+        db,
+        userId,
+        USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME,
+        {}
+      );
 
       return await sendMessage(
         botToken,
         chatId,
 
-        `❌ <b>نام خانوادگی وارد نشده است.</b>
-
-لطفاً نام خانوادگی واقعی خود را وارد کنید.`,
+        '❌ اطلاعات مرحله قبل پیدا نشد. لطفاً نام خود را دوباره وارد کنید.',
 
         getAdminApplicationBackKeyboard()
       );
@@ -164,7 +406,11 @@ export async function handleAdminApplication(
     await setUserState(
       db,
       userId,
-      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE,
+      {
+        firstName,
+        lastName: text,
+      }
     );
 
 
@@ -176,9 +422,9 @@ export async function handleAdminApplication(
 
 لطفاً شماره تلفن خود را ارسال کنید.
 
-می‌توانید شماره را به صورت دستی وارد کنید یا با استفاده از دکمه زیر، شماره تلفن همین حساب تلگرام را ارسال کنید.
+می‌توانید شماره را دستی وارد کنید یا از دکمه زیر برای ارسال شماره همین حساب تلگرام استفاده کنید.
 
-⚠️ شماره تلفن باید متعلق به خودتان باشد.`,
+⚠️ شماره باید متعلق به خودتان باشد.`,
 
       getAdminApplicationPhoneKeyboard()
     );
@@ -186,43 +432,34 @@ export async function handleAdminApplication(
 
 
   /**
-   * =====================================================
    * مرحله شماره تلفن
-   * =====================================================
    */
-
   if (
     currentState ===
     USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE
   ) {
 
-    let phoneNumber = null;
+    let phoneNumber =
+      null;
 
 
-    /**
-     * شماره ارسال‌شده توسط Contact
+    /*
+     * Contact
      */
-
     if (message.contact) {
-
-      /**
-       * اگر Telegram مشخص کرده باشد
-       * که Contact متعلق به کاربر دیگری است
-       */
 
       if (
         message.contact.user_id &&
         Number(message.contact.user_id) !==
           Number(message.from.id)
       ) {
-
         return await sendMessage(
           botToken,
           chatId,
 
           `❌ <b>این شماره متعلق به حساب شما نیست.</b>
 
-لطفاً از دکمه «ارسال شماره همین حساب» استفاده کنید.`,
+لطفاً شماره همین حساب تلگرام را ارسال کنید.`,
 
           getAdminApplicationPhoneKeyboard()
         );
@@ -230,84 +467,177 @@ export async function handleAdminApplication(
 
 
       phoneNumber =
-        message.contact.phone_number;
+        normalizePhone(
+          message.contact.phone_number
+        );
     }
 
 
-    /**
-     * شماره واردشده به صورت دستی
+    /*
+     * شماره دستی
      */
-
     else if (text) {
-
-      const normalizedPhone =
-        text.replace(/[^\d+]/g, '');
-
-
-      if (
-        normalizedPhone.length < 8 ||
-        normalizedPhone.length > 15
-      ) {
-
-        return await sendMessage(
-          botToken,
-          chatId,
-
-          `❌ <b>شماره تلفن صحیح نیست.</b>
-
-لطفاً یک شماره تلفن معتبر وارد کنید.`,
-
-          getAdminApplicationPhoneKeyboard()
-        );
-      }
-
-
       phoneNumber =
-        normalizedPhone;
+        normalizePhone(text);
     }
 
-
-    /**
-     * شماره دریافت نشده
-     */
 
     if (!phoneNumber) {
-
       return await sendMessage(
         botToken,
         chatId,
 
-        `❌ <b>شماره تلفن دریافت نشد.</b>
+        `❌ <b>شماره تلفن صحیح نیست.</b>
 
-لطفاً شماره تلفن خود را وارد کنید یا از دکمه ارسال شماره همین حساب استفاده کنید.`,
+لطفاً یک شماره معتبر وارد کنید.`,
 
         getAdminApplicationPhoneKeyboard()
       );
     }
 
 
-    /**
-     * فعلاً اینجا متوقف می‌شویم.
-     *
-     * مرحله بعد:
-     * ذخیره اطلاعات در دیتابیس
-     * و ارسال درخواست برای مدیران.
+    const firstName =
+      currentData.firstName;
+
+    const lastName =
+      currentData.lastName;
+
+
+    if (!firstName || !lastName) {
+
+      await setUserState(
+        db,
+        userId,
+        USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME,
+        {}
+      );
+
+      return await sendMessage(
+        botToken,
+        chatId,
+
+        '❌ اطلاعات فرم ناقص شده است. لطفاً دوباره از وارد کردن نام شروع کنید.',
+
+        getAdminApplicationBackKeyboard()
+      );
+    }
+
+
+    /*
+     * مطمئن شدن از وجود User
+     * و گرفتن ID داخلی users
      */
+    const user =
+      await ensureUser(
+        db,
+        message.from
+      );
+
+
+    if (!user?.id) {
+      throw new Error(
+        'Could not resolve internal user ID'
+      );
+    }
+
+
+    /*
+     * جلوگیری از ثبت درخواست تکراری
+     */
+    const pending =
+      await getPendingAdminApplicationByUserId(
+        db,
+        user.id
+      );
+
+
+    if (pending) {
+
+      await clearUserState(
+        db,
+        userId
+      );
+
+      return await sendMessage(
+        botToken,
+        chatId,
+
+        `⚠️ <b>شما یک درخواست در انتظار بررسی دارید.</b>
+
+بعد از بررسی درخواست قبلی، امکان ثبت درخواست جدید برای شما فراهم خواهد شد.`,
+
+        getAdminApplicationBackKeyboard()
+      );
+    }
+
+
+    /*
+     * ساخت درخواست
+     */
+    const application = {
+      userId: user.id,
+
+      firstName,
+
+      lastName,
+
+      phoneNumber,
+
+      adminUsername:
+        message.from.username ?? null,
+    };
+
+
+    const result =
+      await createAdminApplication(
+        db,
+        application
+      );
+
+
+    const applicationId =
+      result?.meta?.last_row_id ??
+      null;
+
+
+    /*
+     * پاک کردن State
+     */
+    await clearUserState(
+      db,
+      userId
+    );
+
+
+    /*
+     * اطلاع به ادمین‌ها
+     */
+    await notifyBotAdmins(
+      message,
+      env,
+      {
+        ...application,
+        id: applicationId,
+      }
+    );
+
 
     return await sendMessage(
       botToken,
       chatId,
 
-      `✅ <b>شماره تلفن دریافت شد.</b>
+      `✅ <b>درخواست شما با موفقیت ثبت شد.</b>
 
-اطلاعات اولیه شما دریافت شد.
+درخواست شما برای تیم AdminX ارسال شد.
 
-مرحله بعد، ثبت اطلاعات درخواست و ارسال آن برای مدیران AdminX است.`,
+📌 <b>وضعیت:</b> در انتظار بررسی
+
+پس از بررسی، نتیجه درخواست به شما اطلاع داده خواهد شد.`,
 
       getAdminApplicationBackKeyboard()
     );
   }
 
 
-  return;
+  return null;
 }
