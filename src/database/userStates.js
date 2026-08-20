@@ -4,26 +4,14 @@
  * مسیر:
  * src/database/userStates.js
  *
- * مسئول نگهداری وضعیت موقت کاربران
+ * مسئول:
+ * - نگهداری State موقت کاربران
+ * - نگهداری داده‌های موقت مربوط به State
  */
 
 export const USER_STATES = Object.freeze({
-
-  /**
-   * ================================
-   * استعلام ادمین
-   * ================================
-   */
-
   WAITING_FOR_ADMIN_VERIFICATION:
     'waiting_for_admin_verification',
-
-
-  /**
-   * ================================
-   * ثبت درخواست حساب ادمینی
-   * ================================
-   */
 
   WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION:
     'waiting_for_admin_application_confirmation',
@@ -36,29 +24,81 @@ export const USER_STATES = Object.freeze({
 
   WAITING_FOR_ADMIN_APPLICATION_PHONE:
     'waiting_for_admin_application_phone',
-
 });
 
 
+function serializeState(state, data = {}) {
+  return JSON.stringify({
+    state,
+    data: data && typeof data === 'object'
+      ? data
+      : {},
+  });
+}
+
+
+function deserializeState(value) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.state === 'string'
+    ) {
+      return {
+        state: parsed.state,
+        data:
+          parsed.data &&
+          typeof parsed.data === 'object'
+            ? parsed.data
+            : {},
+      };
+    }
+  } catch {
+    /*
+     * برای سازگاری با Stateهای قدیمی
+     * که فقط به صورت string ذخیره شده‌اند.
+     */
+  }
+
+  return {
+    state: value,
+    data: {},
+  };
+}
+
+
 /**
- * ذخیره یا تغییر State کاربر
+ * ذخیره یا بروزرسانی State
  */
 export async function setUserState(
   db,
   userId,
-  state
+  state,
+  data = {}
 ) {
   if (!db) {
     throw new Error('Database is not available');
   }
 
-  if (!userId) {
+  if (
+    userId === undefined ||
+    userId === null
+  ) {
     throw new Error('User ID is required');
   }
 
   if (!state) {
     throw new Error('State is required');
   }
+
+  const serializedState =
+    serializeState(state, data);
 
   await db
     .prepare(`
@@ -75,7 +115,7 @@ export async function setUserState(
     `)
     .bind(
       userId,
-      state
+      serializedState
     )
     .run();
 }
@@ -88,11 +128,18 @@ export async function getUserState(
   db,
   userId
 ) {
-  if (!db || !userId) {
+  if (!db) {
     return null;
   }
 
-  return await db
+  if (
+    userId === undefined ||
+    userId === null
+  ) {
+    return null;
+  }
+
+  const row = await db
     .prepare(`
       SELECT
         id,
@@ -106,6 +153,19 @@ export async function getUserState(
     `)
     .bind(userId)
     .first();
+
+  if (!row) {
+    return null;
+  }
+
+  const parsed =
+    deserializeState(row.state);
+
+  return {
+    ...row,
+    state: parsed?.state ?? null,
+    data: parsed?.data ?? {},
+  };
 }
 
 
@@ -116,7 +176,14 @@ export async function clearUserState(
   db,
   userId
 ) {
-  if (!db || !userId) {
+  if (!db) {
+    return;
+  }
+
+  if (
+    userId === undefined ||
+    userId === null
+  ) {
     return;
   }
 
