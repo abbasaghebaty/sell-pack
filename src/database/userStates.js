@@ -25,6 +25,9 @@ export const USER_STATES = Object.freeze({
 
   WAITING_FOR_ADMIN_APPLICATION_PHONE:
     'waiting_for_admin_application_phone',
+
+  WAITING_FOR_ADMIN_REJECTION_REASON:
+    'waiting_for_admin_rejection_reason',
 });
 
 
