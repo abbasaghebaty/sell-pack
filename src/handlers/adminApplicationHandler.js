@@ -6,14 +6,6 @@
  */
 
 import {
-  getMainMenuKeyboard,
-} from '../../keyboards/mainMenu.js';
-
-import {
-  sendApplicationToChannel,
-} from './adminApplicationReviewHandler.js';
-
-import {
   sendMessage,
 } from '../api/telegram.js';
 
@@ -23,6 +15,10 @@ import {
   getAdminApplicationBackKeyboard,
   getAdminApplicationPhoneKeyboard,
 } from '../../keyboards/earnMoney.js';
+
+import {
+  getMainMenuKeyboard,
+} from '../../keyboards/mainMenu.js';
 
 import {
   USER_STATES,
@@ -37,8 +33,8 @@ import {
 } from '../database/adminApplications.js';
 
 import {
-  ADMIN_APPLICATION_CHANNEL_ID,
-} from '../config/admins.js';
+  sendApplicationToChannel,
+} from './adminApplicationReviewHandler.js';
 
 
 /**
@@ -105,51 +101,6 @@ export async function startAdminApplication(
 
 
 /**
- * ارسال درخواست به کانال خصوصی
- */
-async function notifyApplicationChannel(
-  botToken,
-  application,
-  applicationId
-) {
-  const username =
-    application.username
-      ? `@${escapeHtml(application.username)}`
-      : 'ندارد';
-
-  const text =
-    `🔔 <b>درخواست جدید ثبت ادمینی</b>\n\n` +
-
-    `🆔 <b>شناسه درخواست:</b>\n` +
-    `<code>#${applicationId}</code>\n\n` +
-
-    `👤 <b>نام:</b>\n` +
-    `${escapeHtml(application.first_name)}\n\n` +
-
-    `👤 <b>نام خانوادگی:</b>\n` +
-    `${escapeHtml(application.last_name)}\n\n` +
-
-    `📱 <b>شماره:</b>\n` +
-    `${escapeHtml(application.phone)}\n\n` +
-
-    `🔗 <b>Username:</b>\n` +
-    `${username}\n\n` +
-
-    `🆔 <b>Telegram ID:</b>\n` +
-    `<code>${application.telegram_id}</code>\n\n` +
-
-    `📌 <b>وضعیت:</b>\n` +
-    `در انتظار بررسی`;
-
-  return await sendMessage(
-    botToken,
-    ADMIN_APPLICATION_CHANNEL_ID,
-    text
-  );
-}
-
-
-/**
  * پردازش فرم
  */
 export async function handleAdminApplication(
@@ -195,24 +146,7 @@ export async function handleAdminApplication(
       botToken,
       chatId,
       'عملیات لغو شد.',
-      {
-        keyboard: [
-          [
-            {
-              text: '💰 کسب درآمد',
-              style: 'success',
-            },
-          ],
-          [
-            {
-              text: '🔙 بازگشت',
-              style: 'danger',
-            },
-          ],
-        ],
-        resize_keyboard: true,
-        is_persistent: false,
-      }
+      getMainMenuKeyboard()
     );
   }
 
@@ -294,7 +228,7 @@ export async function handleAdminApplication(
 
 
   /*
-   * شماره
+   * شماره تلفن
    */
   if (
     currentState ===
@@ -349,7 +283,7 @@ export async function handleAdminApplication(
 
 
     /*
-     * آیا کاربر قبلاً درخواست pending دارد؟
+     * درخواست pending قبلی
      */
     let oldPending = null;
 
@@ -368,8 +302,7 @@ export async function handleAdminApplication(
 
 
     /*
-     * اگر درخواست قبلی دارد،
-     * قبل از ثبت درخواست جدید حذفش می‌کنیم.
+     * حذف درخواست pending قبلی
      */
     if (oldPending) {
       try {
@@ -436,37 +369,18 @@ export async function handleAdminApplication(
       result?.meta?.last_row_id ??
       null;
 
-try {
-  await sendApplicationToChannel(
-    botToken,
-    applicationId,
-    application
-  );
-} catch (error) {
-  console.error(
-    '❌ Failed to send application to channel:',
-    error.message,
-    error.stack
-  );
-}
-    
 
     /*
-     * ارسال درخواست به کانال
+     * فقط یک بار ارسال به کانال
      */
     try {
-      await notifyApplicationChannel(
+      await sendApplicationToChannel(
         botToken,
-        application,
-        applicationId
+        applicationId,
+        application
       );
 
     } catch (error) {
-      /*
-       * درخواست در DB ثبت شده،
-       * بنابراین خطای کانال نباید به کاربر
-       * پیام شکست ثبت درخواست بدهد.
-       */
       console.error(
         '❌ Failed to send application to channel:',
         error.message,
@@ -485,7 +399,7 @@ try {
 
 
     /*
-     * پیام کاربر
+     * پیام موفقیت
      */
     let successText =
       `✅ <b>درخواست شما با موفقیت ثبت شد.</b>\n\n`;
@@ -499,28 +413,15 @@ try {
       `⏳ وضعیت: <b>در حال بررسی</b>\n\n` +
       `پس از بررسی درخواست، نتیجه اعلام خواهد شد.`;
 
+
+    /*
+     * برگشت مستقیم به Home
+     */
     return await sendMessage(
       botToken,
       chatId,
       successText,
-      {
-        keyboard: [
-          [
-            {
-              text: '💰 کسب درآمد',
-              style: 'success',
-            },
-          ],
-          [
-            {
-              text: '🔙 بازگشت',
-              style: 'danger',
-            },
-          ],
-        ],
-        resize_keyboard: true,
-        is_persistent: false,
-      }
+      getMainMenuKeyboard()
     );
   }
 
@@ -542,19 +443,6 @@ try {
 
     getAdminApplicationStartKeyboard()
   );
-}
-
-
-/**
- * Escape HTML
- */
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
 
 
