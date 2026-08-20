@@ -1,51 +1,14 @@
 /**
- * Admin Application Keyboard
+ * Legacy Admin Application Keyboard
  *
- * مسیر:
- * keyboards/adminApplication.js
+ * این فایل برای سازگاری مسیرهای قدیمی نگه داشته شده.
  */
 
-export const ADMIN_APPLICATION_BUTTONS = Object.freeze({
-  SEND_PHONE: '📱 ارسال شماره همین حساب',
-  BACK: '🔙 بازگشت',
-});
+export {
+  getAdminApplicationPhoneKeyboard as getPhoneKeyboard,
+  getAdminApplicationBackKeyboard as getApplicationBackKeyboard,
+} from './earnMoney.js';
 
-
-export function getPhoneKeyboard() {
-  return {
-    keyboard: [
-      [
-        {
-          text: ADMIN_APPLICATION_BUTTONS.SEND_PHONE,
-          request_contact: true,
-        },
-      ],
-      [
-        {
-          text: ADMIN_APPLICATION_BUTTONS.BACK,
-          style: 'danger',
-        },
-      ],
-    ],
-
-    resize_keyboard: true,
-    is_persistent: false,
-  };
-}
-
-
-export function getApplicationBackKeyboard() {
-  return {
-    keyboard: [
-      [
-        {
-          text: ADMIN_APPLICATION_BUTTONS.BACK,
-          style: 'danger',
-        },
-      ],
-    ],
-
-    resize_keyboard: true,
-    is_persistent: false,
-  };
-  }
+export {
+  EARN_MONEY_BUTTONS as ADMIN_APPLICATION_BUTTONS,
+} from './earnMoney.js';
