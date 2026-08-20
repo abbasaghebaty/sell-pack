@@ -3,9 +3,6 @@
  *
  * مسیر:
  * src/database/adminApplications.js
- *
- * جدول:
- * admin_applications
  */
 
 export const APPLICATION_STATUS =
@@ -26,7 +23,7 @@ export async function createAdminApplication(
     );
   }
 
-  const result = await db
+  return await db
     .prepare(`
       INSERT INTO admin_applications (
         telegram_id,
@@ -46,8 +43,6 @@ export async function createAdminApplication(
       application.phone ?? null
     )
     .run();
-
-  return result;
 }
 
 
@@ -84,39 +79,6 @@ export async function getAdminApplicationById(
 }
 
 
-export async function getPendingAdminApplications(
-  db
-) {
-  if (!db) {
-    throw new Error(
-      'D1 database is not available'
-    );
-  }
-
-  const result = await db
-    .prepare(`
-      SELECT
-        id,
-        telegram_id,
-        username,
-        first_name,
-        last_name,
-        phone,
-        status,
-        created_at,
-        updated_at,
-        reviewed_at,
-        reviewed_by
-      FROM admin_applications
-      WHERE status = 'pending'
-      ORDER BY created_at ASC
-    `)
-    .all();
-
-  return result.results ?? [];
-}
-
-
 export async function getLatestPendingApplicationByTelegramId(
   db,
   telegramId
@@ -144,7 +106,7 @@ export async function getLatestPendingApplicationByTelegramId(
       FROM admin_applications
       WHERE telegram_id = ?
         AND status = 'pending'
-      ORDER BY created_at DESC
+      ORDER BY id DESC
       LIMIT 1
     `)
     .bind(telegramId)
@@ -152,12 +114,6 @@ export async function getLatestPendingApplicationByTelegramId(
 }
 
 
-/**
- * حذف تمام درخواست‌های pending یک کاربر
- *
- * درخواست جدید بعد از این حذف،
- * آخر صف قرار می‌گیرد.
- */
 export async function deletePendingApplicationsByTelegramId(
   db,
   telegramId
@@ -179,6 +135,37 @@ export async function deletePendingApplicationsByTelegramId(
 }
 
 
+export async function getPendingAdminApplications(
+  db
+) {
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
+  }
+
+  const result = await db
+    .prepare(`
+      SELECT
+        id,
+        telegram_id,
+        username,
+        first_name,
+        last_name,
+        phone,
+        status,
+        created_at,
+        updated_at
+      FROM admin_applications
+      WHERE status = 'pending'
+      ORDER BY created_at ASC
+    `)
+    .all();
+
+  return result.results ?? [];
+}
+
+
 export async function updateAdminApplicationStatus(
   db,
   applicationId,
@@ -192,10 +179,7 @@ export async function updateAdminApplicationStatus(
   }
 
   if (
-    ![
-      'approved',
-      'rejected',
-    ].includes(status)
+    !['approved', 'rejected'].includes(status)
   ) {
     throw new Error(
       'Invalid application status'
@@ -217,47 +201,5 @@ export async function updateAdminApplicationStatus(
       reviewedBy ?? null,
       applicationId
     )
-    .run();
-}
-
-
-export async function deleteAdminApplication(
-  db,
-  applicationId
-) {
-  if (!db) {
-    throw new Error(
-      'D1 database is not available'
-    );
-  }
-
-  return await db
-    .prepare(`
-      DELETE FROM admin_applications
-      WHERE id = ?
-    `)
-    .bind(applicationId)
-    .run();
-}
-
-
-export async function deleteResolvedApplications(
-  db
-) {
-  if (!db) {
-    throw new Error(
-      'D1 database is not available'
-    );
-  }
-
-  return await db
-    .prepare(`
-      DELETE FROM admin_applications
-      WHERE status IN (
-        'approved',
-        'rejected'
-      )
-    `)
-    .bind()
     .run();
 }
