@@ -8,6 +8,19 @@
  * admins
  */
 
+
+export function normalizeUsername(username) {
+  if (!username) {
+    return null;
+  }
+
+  return String(username)
+    .trim()
+    .replace(/^@+/, '')
+    .toLowerCase();
+}
+
+
 export async function checkAdminValidity(
   db,
   username
@@ -18,16 +31,14 @@ export async function checkAdminValidity(
     );
   }
 
-  if (!username) {
+  const normalizedUsername =
+    normalizeUsername(username);
+
+  if (!normalizedUsername) {
     return null;
   }
 
-  const cleanUsername =
-    String(username)
-      .trim()
-      .replace(/^@/, '');
-
-  const result = await db
+  return await db
     .prepare(`
       SELECT
         id,
@@ -39,14 +50,12 @@ export async function checkAdminValidity(
         created_at,
         updated_at
       FROM admins
-      WHERE LOWER(username) = LOWER(?)
+      WHERE LOWER(username) = ?
         AND status = 'active'
       LIMIT 1
     `)
-    .bind(cleanUsername)
+    .bind(normalizedUsername)
     .first();
-
-  return result || null;
 }
 
 
@@ -60,11 +69,14 @@ export async function checkAdminValidityByTelegramId(
     );
   }
 
-  if (!telegramId) {
+  if (
+    telegramId === undefined ||
+    telegramId === null
+  ) {
     return null;
   }
 
-  const result = await db
+  return await db
     .prepare(`
       SELECT
         id,
@@ -82,8 +94,6 @@ export async function checkAdminValidityByTelegramId(
     `)
     .bind(telegramId)
     .first();
-
-  return result || null;
 }
 
 
@@ -127,7 +137,7 @@ export async function createAdmin(
     );
   }
 
-  const result = await db
+  return await db
     .prepare(`
       INSERT INTO admins (
         telegram_id,
@@ -136,18 +146,23 @@ export async function createAdmin(
         last_name,
         status
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, 'active')
+
+      ON CONFLICT(telegram_id)
+      DO UPDATE SET
+        username = excluded.username,
+        first_name = excluded.first_name,
+        last_name = excluded.last_name,
+        status = 'active',
+        updated_at = CURRENT_TIMESTAMP
     `)
     .bind(
       admin.telegram_id,
-      admin.username ?? null,
+      normalizeUsername(admin.username),
       admin.first_name ?? null,
-      admin.last_name ?? null,
-      admin.status ?? 'active'
+      admin.last_name ?? null
     )
     .run();
-
-  return result;
 }
 
 
@@ -163,8 +178,7 @@ export async function updateAdminStatus(
   }
 
   if (
-    !['active', 'suspended']
-      .includes(status)
+    !['active', 'suspended'].includes(status)
   ) {
     throw new Error(
       'Invalid admin status'
