@@ -3,14 +3,6 @@
  *
  * مسیر:
  * src/handlers/adminApplicationHandler.js
- *
- * مسئول:
- * - ثبت درخواست حساب ادمینی
- * - دریافت نام
- * - دریافت نام خانوادگی
- * - دریافت شماره تلفن
- * - ذخیره درخواست در admin_applications
- * - نگهداری State فرم در user_states
  */
 
 import {
@@ -32,11 +24,17 @@ import {
 
 import {
   createAdminApplication,
+  getLatestPendingApplicationByTelegramId,
+  deletePendingApplicationsByTelegramId,
 } from '../database/adminApplications.js';
+
+import {
+  ADMIN_APPLICATION_CHANNEL_ID,
+} from '../config/admins.js';
 
 
 /**
- * شروع فرم ثبت درخواست
+ * شروع فرم
  */
 export async function startAdminApplication(
   message,
@@ -61,9 +59,6 @@ export async function startAdminApplication(
   }
 
   try {
-    /*
-     * شروع State
-     */
     await setUserState(
       db,
       telegramUser.id,
@@ -102,7 +97,52 @@ export async function startAdminApplication(
 
 
 /**
- * مدیریت مراحل فرم
+ * ارسال درخواست به کانال خصوصی
+ */
+async function notifyApplicationChannel(
+  botToken,
+  application,
+  applicationId
+) {
+  const username =
+    application.username
+      ? `@${escapeHtml(application.username)}`
+      : 'ندارد';
+
+  const text =
+    `🔔 <b>درخواست جدید ثبت ادمینی</b>\n\n` +
+
+    `🆔 <b>شناسه درخواست:</b>\n` +
+    `<code>#${applicationId}</code>\n\n` +
+
+    `👤 <b>نام:</b>\n` +
+    `${escapeHtml(application.first_name)}\n\n` +
+
+    `👤 <b>نام خانوادگی:</b>\n` +
+    `${escapeHtml(application.last_name)}\n\n` +
+
+    `📱 <b>شماره:</b>\n` +
+    `${escapeHtml(application.phone)}\n\n` +
+
+    `🔗 <b>Username:</b>\n` +
+    `${username}\n\n` +
+
+    `🆔 <b>Telegram ID:</b>\n` +
+    `<code>${application.telegram_id}</code>\n\n` +
+
+    `📌 <b>وضعیت:</b>\n` +
+    `در انتظار بررسی`;
+
+  return await sendMessage(
+    botToken,
+    ADMIN_APPLICATION_CHANNEL_ID,
+    text
+  );
+}
+
+
+/**
+ * پردازش فرم
  */
 export async function handleAdminApplication(
   message,
@@ -131,6 +171,7 @@ export async function handleAdminApplication(
     );
   }
 
+
   /*
    * بازگشت
    */
@@ -145,9 +186,7 @@ export async function handleAdminApplication(
     return await sendMessage(
       botToken,
       chatId,
-
-      `عملیات لغو شد.`,
-
+      'عملیات لغو شد.',
       {
         keyboard: [
           [
@@ -171,7 +210,7 @@ export async function handleAdminApplication(
 
 
   /*
-   * مرحله اول: نام
+   * نام
    */
   if (
     currentState ===
@@ -181,7 +220,7 @@ export async function handleAdminApplication(
       return await sendMessage(
         botToken,
         chatId,
-        '❌ لطفاً نام خود را به صورت متنی وارد کنید.',
+        '❌ لطفاً نام خود را وارد کنید.',
         getAdminApplicationBackKeyboard()
       );
     }
@@ -209,7 +248,7 @@ export async function handleAdminApplication(
 
 
   /*
-   * مرحله دوم: نام خانوادگی
+   * نام خانوادگی
    */
   if (
     currentState ===
@@ -247,7 +286,7 @@ export async function handleAdminApplication(
 
 
   /*
-   * مرحله سوم: شماره تلفن
+   * شماره
    */
   if (
     currentState ===
@@ -255,9 +294,6 @@ export async function handleAdminApplication(
   ) {
     let phone = null;
 
-    /*
-     * شماره‌ای که با Contact ارسال شده
-     */
     if (
       message.contact?.phone_number
     ) {
@@ -265,13 +301,7 @@ export async function handleAdminApplication(
         message.contact.phone_number;
     }
 
-    /*
-     * اگر کاربر شماره را دستی نوشت
-     */
-    if (
-      !phone &&
-      text
-    ) {
+    if (!phone && text) {
       phone = text;
     }
 
@@ -281,15 +311,13 @@ export async function handleAdminApplication(
         chatId,
 
         `❌ شماره تلفن دریافت نشد.\n\n` +
-        `لطفاً با دکمه <b>ارسال شماره همین حساب</b> شماره خود را ارسال کنید.`,
+        `لطفاً شماره خود را ارسال کنید.`,
 
         getAdminApplicationPhoneKeyboard()
       );
     }
 
-    /*
-     * اطلاعات نهایی درخواست
-     */
+
     const application = {
       telegram_id:
         telegramUser.id,
@@ -313,23 +341,73 @@ export async function handleAdminApplication(
 
 
     /*
-     * ثبت در admin_applications
+     * آیا کاربر قبلاً درخواست pending دارد؟
      */
+    let oldPending = null;
+
     try {
-      const result =
+      oldPending =
+        await getLatestPendingApplicationByTelegramId(
+          db,
+          telegramUser.id
+        );
+    } catch (error) {
+      console.error(
+        '❌ Failed to check pending application:',
+        error.message
+      );
+    }
+
+
+    /*
+     * اگر درخواست قبلی دارد،
+     * قبل از ثبت درخواست جدید حذفش می‌کنیم.
+     */
+    if (oldPending) {
+      try {
+        await deletePendingApplicationsByTelegramId(
+          db,
+          telegramUser.id
+        );
+
+        console.log(
+          `♻️ Previous pending application #${oldPending.id} replaced`
+        );
+
+      } catch (error) {
+        console.error(
+          '❌ Failed to replace old application:',
+          error.message
+        );
+
+        return await sendMessage(
+          botToken,
+          chatId,
+
+          `❌ درخواست قبلی شما قابل جایگزینی نبود.\n\n` +
+          `لطفاً دوباره تلاش کنید.`,
+
+          getAdminApplicationBackKeyboard()
+        );
+      }
+    }
+
+
+    /*
+     * ثبت درخواست جدید
+     */
+    let result;
+
+    try {
+      result =
         await createAdminApplication(
           db,
           application
         );
 
-      console.log(
-        '✅ Admin application created:',
-        result
-      );
-
     } catch (error) {
       console.error(
-        '❌ Failed to create admin application:',
+        '❌ Failed to create application:',
         error.message,
         error.stack
       );
@@ -346,8 +424,37 @@ export async function handleAdminApplication(
     }
 
 
+    const applicationId =
+      result?.meta?.last_row_id ??
+      null;
+
+
     /*
-     * فرم تمام شد
+     * ارسال درخواست به کانال
+     */
+    try {
+      await notifyApplicationChannel(
+        botToken,
+        application,
+        applicationId
+      );
+
+    } catch (error) {
+      /*
+       * درخواست در DB ثبت شده،
+       * بنابراین خطای کانال نباید به کاربر
+       * پیام شکست ثبت درخواست بدهد.
+       */
+      console.error(
+        '❌ Failed to send application to channel:',
+        error.message,
+        error.stack
+      );
+    }
+
+
+    /*
+     * پاک کردن State
      */
     await clearUserState(
       db,
@@ -356,27 +463,24 @@ export async function handleAdminApplication(
 
 
     /*
-     * پیام موفقیت
+     * پیام کاربر
      */
+    let successText =
+      `✅ <b>درخواست شما با موفقیت ثبت شد.</b>\n\n`;
+
+    if (oldPending) {
+      successText +=
+        `♻️ درخواست قبلی شما حذف شد و درخواست جدیدتان در <b>انتهای صف</b> قرار گرفت.\n\n`;
+    }
+
+    successText +=
+      `⏳ وضعیت: <b>در حال بررسی</b>\n\n` +
+      `پس از بررسی درخواست، نتیجه اعلام خواهد شد.`;
+
     return await sendMessage(
       botToken,
       chatId,
-
-      `✅ <b>درخواست شما با موفقیت ثبت شد.</b>\n\n` +
-
-      `👤 نام: ` +
-      `<b>${escapeHtml(application.first_name)}</b>\n` +
-
-      `👤 نام خانوادگی: ` +
-      `<b>${escapeHtml(application.last_name)}</b>\n` +
-
-      `📱 شماره: ` +
-      `<b>${escapeHtml(application.phone)}</b>\n\n` +
-
-      `⏳ وضعیت درخواست: <b>در حال بررسی</b>\n\n` +
-
-      `درخواست شما برای تیم EndMark ارسال شد و پس از بررسی نتیجه اعلام خواهد شد.`,
-
+      successText,
       {
         keyboard: [
           [
@@ -400,7 +504,7 @@ export async function handleAdminApplication(
 
 
   /*
-   * State ناشناخته
+   * State نامعتبر
    */
   await clearUserState(
     db,
