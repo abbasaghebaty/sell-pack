@@ -1,10 +1,8 @@
 /**
- * Course Menu Reply Keyboard
+ * EndMark Course Menu
  *
  * مسیر:
  * keyboards/courseMenu.js
- *
- * فقط مسئول ساخت منوی خرید دوره و منوی استعلام ادمین است.
  */
 
 export const COURSE_MENU_BUTTONS = Object.freeze({
@@ -12,10 +10,6 @@ export const COURSE_MENU_BUTTONS = Object.freeze({
   BACK: '🔙 بازگشت',
 });
 
-
-/**
- * منوی خرید دوره
- */
 export function getCourseMenuKeyboard() {
   return {
     keyboard: [
@@ -25,7 +19,6 @@ export function getCourseMenuKeyboard() {
           style: 'primary',
         },
       ],
-
       [
         {
           text: COURSE_MENU_BUTTONS.BACK,
@@ -33,18 +26,11 @@ export function getCourseMenuKeyboard() {
         },
       ],
     ],
-
     resize_keyboard: true,
     is_persistent: false,
   };
 }
 
-
-/**
- * منوی مخصوص زمان استعلام ادمین
- *
- * در این حالت فقط دکمه بازگشت نمایش داده می‌شود.
- */
 export function getAdminVerificationKeyboard() {
   return {
     keyboard: [
@@ -55,7 +41,6 @@ export function getAdminVerificationKeyboard() {
         },
       ],
     ],
-
     resize_keyboard: true,
     is_persistent: false,
   };
