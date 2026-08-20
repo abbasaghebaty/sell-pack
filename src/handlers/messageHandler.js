@@ -4,13 +4,13 @@
  * مسیر:
  * src/handlers/messageHandler.js
  *
- * مسئول پردازش:
+ * مسئول:
  * - منوی اصلی
  * - خرید دوره
  * - استعلام ادمین
- * - Forward استعلام
  * - کسب درآمد
  * - درخواست ثبت حساب ادمینی
+ * - پردازش Stateهای کاربر
  */
 
 import {
@@ -23,7 +23,9 @@ import {
   getEarnMoneyKeyboard,
 } from '../../keyboards/earnMoney.js';
 
-import { sendMessage } from '../api/telegram.js';
+import {
+  sendMessage,
+} from '../api/telegram.js';
 
 import {
   MAIN_MENU_BUTTONS,
@@ -50,51 +52,25 @@ import {
 
 
 /**
- * =====================================================
- * کیبورد شروع ثبت درخواست ادمینی
- * =====================================================
- *
- * بعد از زدن «درخواست ثبت حساب ادمینی»
- * این دکمه نمایش داده می‌شود.
- *
- * دکمه درخواست قبلی دیگر نمایش داده نمی‌شود.
- */
-
-function getAdminApplicationStartKeyboard() {
-  return {
-    keyboard: [
-      [
-        {
-          text: '✅ دوره را خریداری کرده‌ام',
-        },
-      ],
-      [
-        {
-          text: COURSE_MENU_BUTTONS.BACK,
-        },
-      ],
-    ],
-    resize_keyboard: true,
-    one_time_keyboard: false,
-  };
-}
-
-
-/**
- * =====================================================
  * استخراج Username
- * =====================================================
  */
-
-function extractUsername(text) {
+function extractUsername(
+  text
+) {
   if (!text) {
     return null;
   }
 
-  const value = text.trim();
+  const value =
+    text.trim();
 
-  if (/^@?[a-zA-Z0-9_]{5,32}$/.test(value)) {
-    return value;
+
+  if (
+    /^@?[a-zA-Z0-9_]{5,32}$/
+      .test(value)
+  ) {
+    return value
+      .replace(/^@/, '');
   }
 
   return null;
@@ -102,19 +78,22 @@ function extractUsername(text) {
 
 
 /**
- * =====================================================
  * استخراج Telegram ID
- * =====================================================
  */
-
-function extractTelegramId(text) {
+function extractTelegramId(
+  text
+) {
   if (!text) {
     return null;
   }
 
-  const value = text.trim();
+  const value =
+    text.trim();
 
-  if (/^\d{5,15}$/.test(value)) {
+
+  if (
+    /^\d{5,15}$/.test(value)
+  ) {
     return Number(value);
   }
 
@@ -123,20 +102,21 @@ function extractTelegramId(text) {
 
 
 /**
- * =====================================================
  * نمایش منوی اصلی
- * =====================================================
  */
-
 async function showMainMenu(
   message,
   env
 ) {
+  const firstName =
+    message.from?.first_name ||
+    'دوست عزیز';
+
   return await sendMessage(
     env.TELEGRAM_BOT_TOKEN,
     message.chat.id,
 
-    `سلام <b>${message.from.first_name || 'دوست عزیز'}</b>
+    `سلام <b>${escapeHtml(firstName)}</b>
 
 به <b>آکادمی AdminX</b> خوش آمدید.
 
@@ -148,11 +128,8 @@ async function showMainMenu(
 
 
 /**
- * =====================================================
- * نمایش منوی خرید دوره
- * =====================================================
+ * نمایش منوی خرید
  */
-
 async function showCourseMenu(
   message,
   env
@@ -175,21 +152,29 @@ async function showCourseMenu(
 
 
 /**
- * =====================================================
  * شروع استعلام ادمین
- * =====================================================
  */
-
 async function startAdminVerification(
   message,
   env,
   db
 ) {
+  if (!db) {
+    return await sendMessage(
+      env.TELEGRAM_BOT_TOKEN,
+      message.chat.id,
+
+      '❌ در حال حاضر امکان استعلام وجود ندارد. لطفاً بعداً دوباره تلاش کنید.'
+    );
+  }
+
+
   await setUserState(
     db,
     message.from.id,
     USER_STATES.WAITING_FOR_ADMIN_VERIFICATION
   );
+
 
   return await sendMessage(
     env.TELEGRAM_BOT_TOKEN,
@@ -199,9 +184,9 @@ async function startAdminVerification(
 
 جهت استعلام معتبر بودن ادمین، یکی از موارد زیر را ارسال کنید:
 
-• آیدی ادمین
+• آیدی عددی ادمین
 • یوزرنیم ادمین
-• یا یک پیام از طرف همان ادمین را برای ربات ارسال کنید.
+• یا یک پیام از طرف همان ادمین را برای ربات فوروارد کنید.
 
 سیستم پس از دریافت اطلاعات، معتبر بودن ادمین را بررسی می‌کند.`,
 
@@ -211,28 +196,27 @@ async function startAdminVerification(
 
 
 /**
- * =====================================================
- * پردازش ورودی استعلام ادمین
- * =====================================================
+ * پردازش استعلام
  */
-
 async function handleAdminVerificationInput(
   message,
   env,
   db
 ) {
-  const botToken = env.TELEGRAM_BOT_TOKEN;
-  const chatId = message.chat.id;
+  const botToken =
+    env.TELEGRAM_BOT_TOKEN;
+
+  const chatId =
+    message.chat.id;
 
 
-  /**
+  /*
    * بازگشت
    */
-
   if (
-    message.text === COURSE_MENU_BUTTONS.BACK
+    message.text ===
+    COURSE_MENU_BUTTONS.BACK
   ) {
-
     await clearUserState(
       db,
       message.from.id
@@ -244,10 +228,6 @@ async function handleAdminVerificationInput(
     );
   }
 
-
-  /**
-   * بررسی دیتابیس
-   */
 
   if (!db) {
     return await sendMessage(
@@ -261,21 +241,13 @@ async function handleAdminVerificationInput(
   }
 
 
-  /**
-   * =====================================================
+  /*
    * Forward
-   * =====================================================
    */
-
   if (message.forward_origin) {
 
     const origin =
       message.forward_origin;
-
-    console.log(
-      '📨 Forward origin:',
-      JSON.stringify(origin)
-    );
 
 
     if (
@@ -286,10 +258,6 @@ async function handleAdminVerificationInput(
       const originalUserId =
         origin.sender_user.id;
 
-      console.log(
-        `🔎 Checking forwarded user ID: ${originalUserId}`
-      );
-
 
       const admin =
         await checkAdminValidityByTelegramId(
@@ -299,7 +267,6 @@ async function handleAdminVerificationInput(
 
 
       if (admin) {
-
         return await sendMessage(
           botToken,
           chatId,
@@ -309,9 +276,9 @@ async function handleAdminVerificationInput(
 این ادمین توسط AdminX تأیید شده است.
 
 👤 ادمین:
-<b>@${admin.admin_username}</b>
+<b>@${escapeHtml(admin.admin_username)}</b>
 
-با اطمینان کامل می‌توانید با این ادمین همکاری کنید.`,
+با اطمینان می‌توانید با این ادمین همکاری کنید.`,
 
           getAdminVerificationKeyboard()
         );
@@ -346,21 +313,16 @@ async function handleAdminVerificationInput(
   }
 
 
-  /**
-   * =====================================================
+  /*
    * Telegram ID
-   * =====================================================
    */
-
   const telegramId =
-    extractTelegramId(message.text);
-
-  if (telegramId) {
-
-    console.log(
-      `🔎 Checking admin Telegram ID: ${telegramId}`
+    extractTelegramId(
+      message.text
     );
 
+
+  if (telegramId) {
 
     const admin =
       await checkAdminValidityByTelegramId(
@@ -370,7 +332,6 @@ async function handleAdminVerificationInput(
 
 
     if (admin) {
-
       return await sendMessage(
         botToken,
         chatId,
@@ -380,9 +341,9 @@ async function handleAdminVerificationInput(
 این ادمین توسط AdminX تأیید شده است.
 
 👤 ادمین:
-<b>@${admin.admin_username}</b>
+<b>@${escapeHtml(admin.admin_username)}</b>
 
-با اطمینان کامل می‌توانید با این ادمین همکاری کنید.`,
+با اطمینان می‌توانید با این ادمین همکاری کنید.`,
 
         getAdminVerificationKeyboard()
       );
@@ -402,21 +363,16 @@ async function handleAdminVerificationInput(
   }
 
 
-  /**
-   * =====================================================
+  /*
    * Username
-   * =====================================================
    */
-
   const username =
-    extractUsername(message.text);
-
-  if (username) {
-
-    console.log(
-      `🔎 Checking admin username: ${username}`
+    extractUsername(
+      message.text
     );
 
+
+  if (username) {
 
     const admin =
       await checkAdminValidity(
@@ -426,7 +382,6 @@ async function handleAdminVerificationInput(
 
 
     if (admin) {
-
       return await sendMessage(
         botToken,
         chatId,
@@ -436,9 +391,9 @@ async function handleAdminVerificationInput(
 این ادمین توسط AdminX تأیید شده است.
 
 👤 ادمین:
-<b>@${admin.admin_username}</b>
+<b>@${escapeHtml(admin.admin_username)}</b>
 
-با اطمینان کامل می‌توانید با این ادمین همکاری کنید.`,
+با اطمینان می‌توانید با این ادمین همکاری کنید.`,
 
         getAdminVerificationKeyboard()
       );
@@ -458,12 +413,6 @@ async function handleAdminVerificationInput(
   }
 
 
-  /**
-   * =====================================================
-   * ورودی نامعتبر
-   * =====================================================
-   */
-
   return await sendMessage(
     botToken,
     chatId,
@@ -482,20 +431,13 @@ async function handleAdminVerificationInput(
 
 
 /**
- * =====================================================
- * Handler اصلی پیام
- * =====================================================
+ * Handler اصلی
  */
-
 export default async function handleMessage(
   message,
-  env
+  env,
+  db
 ) {
-
-  /**
-   * پیام نامعتبر
-   */
-
   if (
     !message ||
     !message.chat ||
@@ -504,9 +446,6 @@ export default async function handleMessage(
     return;
   }
 
-
-  const db =
-    env.DB;
 
   const botToken =
     env.TELEGRAM_BOT_TOKEN;
@@ -518,20 +457,28 @@ export default async function handleMessage(
     message.from.id;
 
   const text =
-    message.text;
+    message.text?.trim();
 
 
-  /**
-   * =====================================================
+  if (!botToken) {
+    console.error(
+      '❌ TELEGRAM_BOT_TOKEN is missing'
+    );
+
+    return;
+  }
+
+
+  /*
    * /start
-   * =====================================================
+   *
+   * معمولاً از commandHandler می‌آید،
+   * اما برای اطمینان اینجا هم مدیریت می‌کنیم.
    */
-
   if (
     text === '/start' ||
     text?.startsWith('/start ')
   ) {
-
     await clearUserState(
       db,
       userId
@@ -544,60 +491,28 @@ export default async function handleMessage(
   }
 
 
-  /**
-   * =====================================================
-   * State فعلی کاربر
-   * =====================================================
+  /*
+   * دریافت State
    */
-
   const userState =
     await getUserState(
       db,
       userId
     );
 
+
   const currentState =
-    userState?.state || null;
+    userState?.state ?? null;
 
-  /**
- * =====================================================
- * درخواست ثبت حساب ادمینی
- * =====================================================
- *
- * تمام مراحل فرم در Handler جداگانه پردازش می‌شوند.
- */
+  const currentData =
+    userState?.data ?? {};
 
-if (
-  currentState ===
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION ||
 
-  currentState ===
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME ||
-
-  currentState ===
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME ||
-
-  currentState ===
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE
-) {
-
-  return await handleAdminApplication(
-    message,
-    env,
-    db,
-    currentState
-  );
-}
-
-  /**
-   * =====================================================
+  /*
    * بازگشت عمومی
    *
-   * مهم:
-   * قبل از هر State دیگری بررسی می‌شود.
-   * =====================================================
+   * باید قبل از Stateهای فرم بررسی شود.
    */
-
   if (
     text === COURSE_MENU_BUTTONS.BACK
   ) {
@@ -614,44 +529,83 @@ if (
   }
 
 
-  /**
-   * =====================================================
-   * درخواست ثبت حساب ادمینی
-   *
-   * تمام Stateهای مربوط به درخواست ادمینی
-   * اینجا به Handler اختصاصی فرستاده می‌شوند.
-   *
-   * استعلام ادمین اصلاً وارد این بخش نمی‌شود.
-   * =====================================================
+  /*
+   * State فرم ثبت حساب ادمینی
    */
+  const adminApplicationStates =
+    new Set([
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME,
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME,
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE,
+    ]);
+
 
   if (
-    currentState ===
-      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION ||
-
-    currentState ===
-      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_NAME ||
-
-    currentState ===
-      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE
+    adminApplicationStates.has(
+      currentState
+    )
   ) {
+
+    /*
+     * مرحله تأیید خرید
+     */
+    if (
+      currentState ===
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION
+    ) {
+
+      if (
+        text ===
+        EARN_MONEY_BUTTONS.COURSE_PURCHASED
+      ) {
+        return await startAdminApplication(
+          message,
+          env,
+          db
+        );
+      }
+
+      return await sendMessage(
+        botToken,
+        chatId,
+
+        `لطفاً ابتدا گزینه <b>دوره را خریداری کرده‌ام</b> را انتخاب کنید.`,
+
+        {
+          keyboard: [
+            [
+              {
+                text:
+                  EARN_MONEY_BUTTONS.COURSE_PURCHASED,
+              },
+            ],
+            [
+              {
+                text:
+                  COURSE_MENU_BUTTONS.BACK,
+              },
+            ],
+          ],
+          resize_keyboard: true,
+        }
+      );
+    }
+
 
     return await handleAdminApplication(
       message,
       env,
-      db
+      db,
+      currentState,
+      currentData
     );
   }
 
 
-  /**
-   * =====================================================
-   * حالت استعلام ادمین
-   *
-   * این بخش کاملاً جدا از درخواست ثبت حساب است.
-   * =====================================================
+  /*
+   * State استعلام ادمین
    */
-
   if (
     currentState ===
     USER_STATES.WAITING_FOR_ADMIN_VERIFICATION
@@ -665,17 +619,13 @@ if (
   }
 
 
-  /**
-   * =====================================================
+  /*
    * خرید دوره
-   * =====================================================
    */
-
   if (
     text ===
     MAIN_MENU_BUTTONS.BUY_COURSE
   ) {
-
     return await showCourseMenu(
       message,
       env
@@ -683,17 +633,13 @@ if (
   }
 
 
-  /**
-   * =====================================================
+  /*
    * استعلام ادمین
-   * =====================================================
    */
-
   if (
     text ===
     COURSE_MENU_BUTTONS.VERIFY_ADMIN
   ) {
-
     return await startAdminVerification(
       message,
       env,
@@ -702,12 +648,9 @@ if (
   }
 
 
-  /**
-   * =====================================================
+  /*
    * کسب درآمد
-   * =====================================================
    */
-
   if (
     text ===
     MAIN_MENU_BUTTONS.EARN_MONEY
@@ -732,90 +675,68 @@ if (
   }
 
 
-  /**
-   * =====================================================
-   * شروع درخواست ثبت حساب ادمینی
-   * =====================================================
+  /*
+   * شروع درخواست حساب ادمینی
    */
+  if (
+    text ===
+    EARN_MONEY_BUTTONS.APPLY_ADMIN
+  ) {
 
- if (
-  text ===
-  EARN_MONEY_BUTTONS.APPLY_ADMIN
-) {
+    if (!db) {
+      return await sendMessage(
+        botToken,
+        chatId,
 
-  await setUserState(
-    db,
-    userId,
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION
-  );
+        '❌ در حال حاضر امکان ثبت درخواست وجود ندارد. لطفاً بعداً دوباره تلاش کنید.',
 
-  return await sendMessage(
-    botToken,
-    chatId,
+        getEarnMoneyKeyboard()
+      );
+    }
 
-    `📝 <b>ثبت درخواست حساب ادمینی</b>
+
+    await setUserState(
+      db,
+      userId,
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
+      {}
+    );
+
+
+    return await sendMessage(
+      botToken,
+      chatId,
+
+      `📝 <b>ثبت درخواست حساب ادمینی</b>
 
 برای ثبت درخواست همکاری با AdminX، ابتدا باید دوره را خریداری کرده باشید.
 
-پس از تأیید خرید دوره، اطلاعات لازم از شما دریافت می‌شود و درخواست برای بررسی تیم AdminX ارسال خواهد شد.
-
-⚠️ اطلاعاتی که در مراحل بعدی وارد می‌کنید باید کاملاً واقعی و متعلق به خودتان باشد. اطلاعات نادرست می‌تواند باعث رد شدن درخواست شود.
-
 اگر دوره را خریداری کرده‌اید، گزینه زیر را انتخاب کنید.`,
 
-    getAdminApplicationStartKeyboard()
-  );
-}
-
-/**
- * =====================================================
- * تأیید خرید دوره
- * =====================================================
- */
-
-if (
-  text ===
-  EARN_MONEY_BUTTONS.COURSE_PURCHASED
-) {
-
-  if (
-    currentState !==
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION
-  ) {
-    return;
-  }
-
-  return await startAdminApplication(
-    message,
-    env,
-    db
-  );
-}
-  
-  /**
-   * =====================================================
-   * تأیید خرید دوره و شروع فرم
-   * =====================================================
-   */
-
-  if (
-    text === '✅ دوره را خریداری کرده‌ام'
-  ) {
-
-    return await startAdminApplication(
-      message,
-      env,
-      db
+      {
+        keyboard: [
+          [
+            {
+              text:
+                EARN_MONEY_BUTTONS.COURSE_PURCHASED,
+            },
+          ],
+          [
+            {
+              text:
+                COURSE_MENU_BUTTONS.BACK,
+            },
+          ],
+        ],
+        resize_keyboard: true,
+      }
     );
   }
 
 
-  /**
-   * =====================================================
-   * راهنما و پشتیبانی
-   * =====================================================
+  /*
+   * پشتیبانی
    */
-
   if (
     text ===
     MAIN_MENU_BUTTONS.SUPPORT
@@ -834,12 +755,9 @@ if (
   }
 
 
-  /**
-   * =====================================================
+  /*
    * پیام ناشناخته
-   * =====================================================
    */
-
   return await sendMessage(
     botToken,
     chatId,
@@ -848,4 +766,19 @@ if (
 
     getMainMenuKeyboard()
   );
+}
+
+
+/**
+ * Escape HTML
+ */
+function escapeHtml(
+  value
+) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
