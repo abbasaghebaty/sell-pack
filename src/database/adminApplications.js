@@ -4,44 +4,46 @@
  * مسیر:
  * src/database/adminApplications.js
  *
- * مسئول:
- * - ثبت درخواست ادمین
- * - دریافت درخواست
- * - تغییر وضعیت درخواست
- * - ثبت بررسی‌کننده
+ * جدول:
+ * admin_applications
  */
+
+export const APPLICATION_STATUS =
+  Object.freeze({
+    PENDING: 'pending',
+    APPROVED: 'approved',
+    REJECTED: 'rejected',
+  });
+
 
 export async function createAdminApplication(
   db,
-  {
-    userId,
-    firstName,
-    lastName,
-    phoneNumber,
-    adminUsername,
-  }
+  application
 ) {
   if (!db) {
-    throw new Error('Database is not available');
+    throw new Error(
+      'D1 database is not available'
+    );
   }
 
   const result = await db
     .prepare(`
       INSERT INTO admin_applications (
-        user_id,
+        telegram_id,
+        username,
         first_name,
         last_name,
-        phone_number,
-        admin_username
+        phone,
+        status
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, 'pending')
     `)
     .bind(
-      userId,
-      firstName,
-      lastName,
-      phoneNumber,
-      adminUsername
+      application.telegram_id,
+      application.username ?? null,
+      application.first_name ?? null,
+      application.last_name ?? null,
+      application.phone ?? null
     )
     .run();
 
@@ -49,85 +51,128 @@ export async function createAdminApplication(
 }
 
 
-/**
- * دریافت یک درخواست با ID
- */
 export async function getAdminApplicationById(
   db,
-  applicationId
+  id
 ) {
-  if (!db || !applicationId) {
-    return null;
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
   }
 
   return await db
     .prepare(`
       SELECT
         id,
-        user_id,
+        telegram_id,
+        username,
         first_name,
         last_name,
-        phone_number,
-        admin_username,
+        phone,
         status,
-        reviewed_by,
+        created_at,
+        updated_at,
         reviewed_at,
-        created_at
+        reviewed_by
       FROM admin_applications
       WHERE id = ?
       LIMIT 1
     `)
-    .bind(applicationId)
+    .bind(id)
     .first();
 }
 
 
-/**
- * دریافت درخواست در انتظار بررسی یک کاربر
- */
-export async function getPendingAdminApplicationByUserId(
-  db,
-  userId
+export async function getPendingAdminApplications(
+  db
 ) {
-  if (!db || !userId) {
-    return null;
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
+  }
+
+  const result = await db
+    .prepare(`
+      SELECT
+        id,
+        telegram_id,
+        username,
+        first_name,
+        last_name,
+        phone,
+        status,
+        created_at,
+        updated_at,
+        reviewed_at,
+        reviewed_by
+      FROM admin_applications
+      WHERE status = 'pending'
+      ORDER BY created_at ASC
+    `)
+    .all();
+
+  return result.results ?? [];
+}
+
+
+export async function getLatestPendingApplicationByTelegramId(
+  db,
+  telegramId
+) {
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
   }
 
   return await db
     .prepare(`
       SELECT
         id,
-        user_id,
+        telegram_id,
+        username,
         first_name,
         last_name,
-        phone_number,
-        admin_username,
+        phone,
         status,
-        reviewed_by,
+        created_at,
+        updated_at,
         reviewed_at,
-        created_at
+        reviewed_by
       FROM admin_applications
-      WHERE user_id = ?
+      WHERE telegram_id = ?
         AND status = 'pending'
-      ORDER BY id DESC
+      ORDER BY created_at DESC
       LIMIT 1
     `)
-    .bind(userId)
+    .bind(telegramId)
     .first();
 }
 
 
-/**
- * تغییر وضعیت درخواست
- */
 export async function updateAdminApplicationStatus(
   db,
   applicationId,
   status,
   reviewedBy
 ) {
-  if (!db || !applicationId || !status || !reviewedBy) {
-    throw new Error('Invalid application status data');
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
+  }
+
+  if (
+    ![
+      'approved',
+      'rejected',
+    ].includes(status)
+  ) {
+    throw new Error(
+      'Invalid application status'
+    );
   }
 
   return await db
@@ -135,14 +180,56 @@ export async function updateAdminApplicationStatus(
       UPDATE admin_applications
       SET
         status = ?,
+        reviewed_at = CURRENT_TIMESTAMP,
         reviewed_by = ?,
-        reviewed_at = CURRENT_TIMESTAMP
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `)
     .bind(
       status,
-      reviewedBy,
+      reviewedBy ?? null,
       applicationId
     )
+    .run();
+}
+
+
+export async function deleteAdminApplication(
+  db,
+  applicationId
+) {
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
+  }
+
+  return await db
+    .prepare(`
+      DELETE FROM admin_applications
+      WHERE id = ?
+    `)
+    .bind(applicationId)
+    .run();
+}
+
+
+export async function deleteResolvedApplications(
+  db
+) {
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
+  }
+
+  return await db
+    .prepare(`
+      DELETE FROM admin_applications
+      WHERE status IN (
+        'approved',
+        'rejected'
+      )
+    `)
     .run();
 }
