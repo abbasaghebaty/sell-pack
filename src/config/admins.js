@@ -5,6 +5,5 @@
  */
 
 export const BOT_ADMINS = Object.freeze([
-  8790535873,
-  8842657623,
+8842657623,
 ]);
