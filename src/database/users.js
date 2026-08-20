@@ -1,6 +1,22 @@
+/**
+ * Users Database
+ *
+ * مسیر:
+ * src/database/users.js
+ *
+ * مسئول:
+ * - ایجاد کاربر
+ * - بروزرسانی اطلاعات کاربر
+ * - برگرداندن شناسه داخلی کاربر
+ */
+
 export async function ensureUser(db, telegramUser) {
+  if (!db) {
+    throw new Error('Database is not available');
+  }
+
   if (!telegramUser?.id) {
-    throw new Error("Invalid Telegram user");
+    throw new Error('Invalid Telegram user');
   }
 
   const telegramId = telegramUser.id;
@@ -15,12 +31,13 @@ export async function ensureUser(db, telegramUser) {
       SELECT id
       FROM users
       WHERE telegram_id = ?
+      LIMIT 1
     `)
     .bind(telegramId)
     .first();
 
   if (!existingUser) {
-    await db
+    const result = await db
       .prepare(`
         INSERT INTO users (
           telegram_id,
@@ -43,8 +60,9 @@ export async function ensureUser(db, telegramUser) {
       .run();
 
     return {
-      id: null,
-      isNew: true
+      id: result?.meta?.last_row_id ?? null,
+      telegramId,
+      isNew: true,
     };
   }
 
@@ -72,6 +90,7 @@ export async function ensureUser(db, telegramUser) {
 
   return {
     id: existingUser.id,
-    isNew: false
+    telegramId,
+    isNew: false,
   };
 }
