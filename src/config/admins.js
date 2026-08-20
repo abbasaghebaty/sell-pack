@@ -1,9 +1,16 @@
 /**
- * EndMark Bot Administrators
+ * EndMark Bot Configuration
  *
- * آیدی عددی مدیران اصلی ربات
+ * مسیر:
+ * src/config/admins.js
  */
 
 export const BOT_ADMINS = Object.freeze([
-8842657623,
+  8842657623,
 ]);
+
+/*
+ * کانال خصوصی بررسی درخواست‌های ادمینی
+ */
+export const ADMIN_APPLICATION_CHANNEL_ID =
+  -1004295854315;
