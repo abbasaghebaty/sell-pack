@@ -8,22 +8,56 @@
 import handleCommand from './handlers/commandHandler.js';
 import handleMessage from './handlers/messageHandler.js';
 
-async function processUpdate(update, env, db) {
-  if (!update || typeof update !== 'object') {
+import {
+  handleAdminApplicationCallback,
+} from './handlers/adminApplicationReviewHandler.js';
+
+
+async function processUpdate(
+  update,
+  env,
+  db
+) {
+  if (
+    !update ||
+    typeof update !== 'object'
+  ) {
     return;
   }
+
+
+  /*
+   * Callback Query
+   */
+  if (
+    update.callback_query
+  ) {
+    await handleAdminApplicationCallback(
+      update.callback_query,
+      env,
+      db
+    );
+
+    return;
+  }
+
 
   /*
    * Message
    */
   if (update.message) {
-    const message = update.message;
+    const message =
+      update.message;
 
-    if (!message.chat || !message.from) {
+    if (
+      !message.chat ||
+      !message.from
+    ) {
       return;
     }
 
-    const text = message.text || '';
+    const text =
+      message.text || '';
 
     console.log(
       `📨 Message from ${message.chat.id}:`,
@@ -31,35 +65,24 @@ async function processUpdate(update, env, db) {
     );
 
     if (text.startsWith('/')) {
-      await handleCommand(message, env, db);
+      await handleCommand(
+        message,
+        env,
+        db
+      );
     } else {
-      await handleMessage(message, env, db);
+      await handleMessage(
+        message,
+        env,
+        db
+      );
     }
 
     return;
   }
 
-  /*
-   * Edited message
-   */
+
   if (update.edited_message) {
-    console.log('ℹ️ Edited message ignored');
-    return;
-  }
-
-  /*
-   * Callback Query
-   *
-   * فعلاً ربات از Reply Keyboard استفاده می‌کند،
-   * اما این مسیر را باز نگه می‌داریم تا اگر بعداً
-   * Inline Keyboard اضافه شد، Update گم نشود.
-   */
-  if (update.callback_query) {
-    console.log(
-      'ℹ️ Callback query received:',
-      update.callback_query.data
-    );
-
     return;
   }
 
@@ -69,16 +92,20 @@ async function processUpdate(update, env, db) {
   );
 }
 
+
 export default {
   async fetch(request, env) {
     try {
-      const url = new URL(request.url);
+      const url =
+        new URL(request.url);
 
-      /*
-       * Webhook
-       */
-      if (url.pathname === '/webhook') {
-        if (request.method !== 'POST') {
+
+      if (
+        url.pathname === '/webhook'
+      ) {
+        if (
+          request.method !== 'POST'
+        ) {
           return new Response(
             'Method Not Allowed',
             { status: 405 }
@@ -88,29 +115,35 @@ export default {
         let update;
 
         try {
-          update = await request.json();
+          update =
+            await request.json();
         } catch (error) {
           console.error(
             '❌ Invalid webhook JSON:',
             error.message
           );
 
-          return new Response('OK', {
-            status: 200,
-          });
+          return new Response(
+            'OK',
+            { status: 200 }
+          );
         }
 
-        if (!env.TELEGRAM_BOT_TOKEN) {
+        if (
+          !env.TELEGRAM_BOT_TOKEN
+        ) {
           console.error(
             '❌ TELEGRAM_BOT_TOKEN is missing'
           );
 
-          return new Response('OK', {
-            status: 200,
-          });
+          return new Response(
+            'OK',
+            { status: 200 }
+          );
         }
 
-        const db = env.DB || null;
+        const db =
+          env.DB || null;
 
         try {
           await processUpdate(
@@ -126,46 +159,44 @@ export default {
           );
         }
 
-        /*
-         * تلگرام باید همیشه 200 دریافت کند.
-         */
-        return new Response('OK', {
-          status: 200,
-        });
+        return new Response(
+          'OK',
+          { status: 200 }
+        );
       }
 
-      /*
-       * Root
-       */
+
       if (url.pathname === '/') {
         return Response.json({
           success: true,
-          service: 'telegram-bot-endmark',
+          service:
+            'telegram-bot-endmark',
           status: 'online',
-          database: Boolean(env.DB),
+          database:
+            Boolean(env.DB),
           bot_token_set:
-            Boolean(env.TELEGRAM_BOT_TOKEN),
+            Boolean(
+              env.TELEGRAM_BOT_TOKEN
+            ),
           timestamp:
             new Date().toISOString(),
         });
       }
 
-      /*
-       * Health
-       */
-      if (url.pathname === '/health') {
+
+      if (
+        url.pathname === '/health'
+      ) {
         return Response.json({
           ok: true,
-          service: 'endmark-bot',
-          database: Boolean(env.DB),
-          timestamp:
-            new Date().toISOString(),
+          service:
+            'endmark-bot',
+          database:
+            Boolean(env.DB),
         });
       }
 
-      /*
-       * Not found
-       */
+
       return Response.json(
         {
           success: false,
@@ -186,7 +217,8 @@ export default {
       return Response.json(
         {
           success: false,
-          error: 'Internal server error',
+          error:
+            'Internal server error',
         },
         {
           status: 500,
