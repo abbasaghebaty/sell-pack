@@ -3,17 +3,24 @@
  *
  * مسیر:
  * src/commands/start.js
- *
- * مسئول:
- * - ثبت / بروزرسانی کاربر
- * - پاک کردن State قبلی
- * - نمایش منوی اصلی
  */
 
-import { sendMessage } from '../api/telegram.js';
-import { getMainMenuKeyboard } from '../../keyboards/mainMenu.js';
-import { ensureUser } from '../database/users.js';
-import { clearUserState } from '../database/userStates.js';
+import {
+  sendMessage,
+} from '../api/telegram.js';
+
+import {
+  getMainMenuKeyboard,
+} from '../../keyboards/mainMenu.js';
+
+import {
+  ensureUser,
+} from '../database/users.js';
+
+import {
+  clearUserState,
+} from '../database/userStates.js';
+
 
 export async function handleStartCommand(
   chatId,
@@ -21,23 +28,32 @@ export async function handleStartCommand(
   env,
   db
 ) {
-  const botToken = env?.TELEGRAM_BOT_TOKEN;
+  const botToken =
+    env?.TELEGRAM_BOT_TOKEN;
+
 
   if (!botToken) {
-    console.error('❌ Bot token not available');
+    console.error(
+      '❌ Bot token not available'
+    );
+
     return;
   }
+
 
   if (!telegramUser?.id) {
-    console.error('❌ Telegram user information is missing');
+    console.error(
+      '❌ Telegram user missing'
+    );
+
     return;
   }
 
+
   try {
-    console.log(`▶️ Start command for user: ${telegramUser.id}`);
 
     /*
-     * پاک کردن State قبلی
+     * پاک کردن فرم یا State قبلی
      */
     if (db) {
       try {
@@ -45,46 +61,55 @@ export async function handleStartCommand(
           db,
           telegramUser.id
         );
-      } catch (stateError) {
-        console.warn(
-          '⚠️ Failed to clear user state:',
-          stateError.message
+      } catch (error) {
+        console.error(
+          '❌ Failed to clear start state:',
+          error.message
         );
       }
     }
 
+
     /*
-     * ایجاد / بروزرسانی کاربر
+     * ایجاد / بروزرسانی User
      */
     if (db) {
       try {
-        const result = await ensureUser(
-          db,
-          telegramUser
-        );
+        const user =
+          await ensureUser(
+            db,
+            telegramUser
+          );
 
         console.log(
           `✅ User ensured: ${telegramUser.id}`,
-          `internalId=${result.id}`,
-          `isNew=${result.isNew}`
+          `internalId=${user.id}`,
+          `isNew=${user.isNew}`
         );
-      } catch (dbError) {
+
+      } catch (error) {
         console.error(
-          '❌ Database error in start:',
-          dbError.message
+          '❌ Failed to ensure user:',
+          error.message
         );
       }
-    } else {
-      console.warn('⚠️ Database not available');
     }
 
+
     const firstName =
-      telegramUser.first_name || 'دوست';
+      escapeHtml(
+        telegramUser.first_name ||
+        'دوست'
+      );
+
 
     const welcomeMessage =
-      `سلام <b>${escapeHtml(firstName)}</b>!\n\n` +
-      `به <b>آکادمی AdminX</b> خوش آمدید.\n\n` +
-      `از منوی پایین می‌توانید دوره‌ها و امکانات آکادمی را مشاهده کنید.`;
+      `سلام <b>${firstName}</b>!
+
+به <b>آکادمی AdminX</b> خوش آمدید.
+
+از منوی زیر می‌توانید دوره‌ها و امکانات آکادمی را مشاهده کنید.`;
+
 
     return await sendMessage(
       botToken,
@@ -94,11 +119,13 @@ export async function handleStartCommand(
     );
 
   } catch (error) {
+
     console.error(
       '❌ Start command error:',
       error.message,
       error.stack
     );
+
 
     try {
       return await sendMessage(
@@ -108,23 +135,24 @@ export async function handleStartCommand(
       );
     } catch (sendError) {
       console.error(
-        '❌ Failed to send start error:',
+        '❌ Failed to send error message:',
         sendError.message
       );
     }
   }
 }
 
-/**
- * جلوگیری از خراب شدن HTML پیام
- */
-function escapeHtml(value) {
-  return String(value)
+
+function escapeHtml(
+  value
+) {
+  return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
 
 export default handleStartCommand;
