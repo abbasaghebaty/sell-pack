@@ -1,11 +1,8 @@
 /**
- * Main Menu Reply Keyboard
+ * EndMark Main Menu
  *
  * مسیر:
  * keyboards/mainMenu.js
- *
- * این فایل فقط مسئول ساخت منوی اصلی ربات است.
- * هیچ منطق دیتابیس، Handler، پرداخت یا Business Logic ندارد.
  */
 
 export const MAIN_MENU_BUTTONS = Object.freeze({
@@ -20,14 +17,13 @@ export function getMainMenuKeyboard() {
       [
         {
           text: MAIN_MENU_BUTTONS.EARN_MONEY,
-          style: 'primary',
+          style: 'success',
         },
         {
           text: MAIN_MENU_BUTTONS.BUY_COURSE,
           style: 'primary',
         },
       ],
-
       [
         {
           text: MAIN_MENU_BUTTONS.SUPPORT,
@@ -35,7 +31,6 @@ export function getMainMenuKeyboard() {
         },
       ],
     ],
-
     resize_keyboard: true,
     is_persistent: false,
   };
