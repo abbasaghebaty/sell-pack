@@ -152,6 +152,33 @@ export async function getLatestPendingApplicationByTelegramId(
 }
 
 
+/**
+ * حذف تمام درخواست‌های pending یک کاربر
+ *
+ * درخواست جدید بعد از این حذف،
+ * آخر صف قرار می‌گیرد.
+ */
+export async function deletePendingApplicationsByTelegramId(
+  db,
+  telegramId
+) {
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
+  }
+
+  return await db
+    .prepare(`
+      DELETE FROM admin_applications
+      WHERE telegram_id = ?
+        AND status = 'pending'
+    `)
+    .bind(telegramId)
+    .run();
+}
+
+
 export async function updateAdminApplicationStatus(
   db,
   applicationId,
@@ -231,5 +258,6 @@ export async function deleteResolvedApplications(
         'rejected'
       )
     `)
+    .bind()
     .run();
 }
