@@ -436,6 +436,20 @@ export async function handleAdminApplication(
       result?.meta?.last_row_id ??
       null;
 
+try {
+  await sendApplicationToChannel(
+    botToken,
+    applicationId,
+    application
+  );
+} catch (error) {
+  console.error(
+    '❌ Failed to send application to channel:',
+    error.message,
+    error.stack
+  );
+}
+    
 
     /*
      * ارسال درخواست به کانال
