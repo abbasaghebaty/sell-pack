@@ -4,12 +4,13 @@
  * مسیر:
  * src/database/userStates.js
  *
- * مسئول:
- * - نگهداری State موقت کاربران
- * - نگهداری داده‌های موقت مربوط به State
+ * جدول:
+ * user_states
  */
 
 export const USER_STATES = Object.freeze({
+  IDLE: 'idle',
+
   WAITING_FOR_ADMIN_VERIFICATION:
     'waiting_for_admin_verification',
 
@@ -27,171 +28,204 @@ export const USER_STATES = Object.freeze({
 });
 
 
-function serializeState(state, data = {}) {
-  return JSON.stringify({
-    state,
-    data: data && typeof data === 'object'
-      ? data
-      : {},
-  });
-}
+export async function getUserState(
+  db,
+  telegramId
+) {
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
+  }
 
+  const result = await db
+    .prepare(`
+      SELECT
+        telegram_id,
+        state,
+        data,
+        created_at,
+        updated_at
+      FROM user_states
+      WHERE telegram_id = ?
+      LIMIT 1
+    `)
+    .bind(telegramId)
+    .first();
 
-function deserializeState(value) {
-  if (!value) {
+  if (!result) {
     return null;
   }
 
-  try {
-    const parsed = JSON.parse(value);
+  let data = {};
 
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      typeof parsed.state === 'string'
-    ) {
-      return {
-        state: parsed.state,
-        data:
-          parsed.data &&
-          typeof parsed.data === 'object'
-            ? parsed.data
-            : {},
-      };
-    }
-  } catch {
-    /*
-     * برای سازگاری با Stateهای قدیمی
-     * که فقط به صورت string ذخیره شده‌اند.
-     */
+  try {
+    data =
+      result.data
+        ? JSON.parse(result.data)
+        : {};
+  } catch (error) {
+    console.error(
+      '❌ Failed to parse user state data:',
+      error.message
+    );
+
+    data = {};
   }
 
   return {
-    state: value,
-    data: {},
+    telegramId:
+      result.telegram_id,
+
+    state:
+      result.state,
+
+    data,
+
+    createdAt:
+      result.created_at,
+
+    updatedAt:
+      result.updated_at,
   };
 }
 
 
-/**
- * ذخیره یا بروزرسانی State
- */
 export async function setUserState(
   db,
-  userId,
+  telegramId,
   state,
   data = {}
 ) {
   if (!db) {
-    throw new Error('Database is not available');
+    throw new Error(
+      'D1 database is not available'
+    );
   }
 
-  if (
-    userId === undefined ||
-    userId === null
-  ) {
-    throw new Error('User ID is required');
+  if (!telegramId) {
+    throw new Error(
+      'Telegram ID is required'
+    );
   }
 
   if (!state) {
-    throw new Error('State is required');
+    throw new Error(
+      'State is required'
+    );
   }
 
-  const serializedState =
-    serializeState(state, data);
+  const jsonData =
+    JSON.stringify(data ?? {});
 
   await db
     .prepare(`
       INSERT INTO user_states (
-        user_id,
-        state
+        telegram_id,
+        state,
+        data
       )
-      VALUES (?, ?)
+      VALUES (?, ?, ?)
 
-      ON CONFLICT(user_id)
+      ON CONFLICT(telegram_id)
       DO UPDATE SET
         state = excluded.state,
+        data = excluded.data,
         updated_at = CURRENT_TIMESTAMP
     `)
     .bind(
-      userId,
-      serializedState
+      telegramId,
+      state,
+      jsonData
     )
     .run();
-}
-
-
-/**
- * دریافت State کاربر
- */
-export async function getUserState(
-  db,
-  userId
-) {
-  if (!db) {
-    return null;
-  }
-
-  if (
-    userId === undefined ||
-    userId === null
-  ) {
-    return null;
-  }
-
-  const row = await db
-    .prepare(`
-      SELECT
-        id,
-        user_id,
-        state,
-        created_at,
-        updated_at
-      FROM user_states
-      WHERE user_id = ?
-      LIMIT 1
-    `)
-    .bind(userId)
-    .first();
-
-  if (!row) {
-    return null;
-  }
-
-  const parsed =
-    deserializeState(row.state);
 
   return {
-    ...row,
-    state: parsed?.state ?? null,
-    data: parsed?.data ?? {},
+    telegramId,
+    state,
+    data,
   };
 }
 
 
-/**
- * حذف State کاربر
- */
-export async function clearUserState(
+export async function updateUserStateData(
   db,
-  userId
+  telegramId,
+  data = {}
 ) {
   if (!db) {
-    return;
+    throw new Error(
+      'D1 database is not available'
+    );
   }
 
-  if (
-    userId === undefined ||
-    userId === null
-  ) {
+  const current =
+    await getUserState(
+      db,
+      telegramId
+    );
+
+  const mergedData = {
+    ...(current?.data ?? {}),
+    ...(data ?? {}),
+  };
+
+  if (!current) {
+    throw new Error(
+      'User state does not exist'
+    );
+  }
+
+  await db
+    .prepare(`
+      UPDATE user_states
+      SET
+        data = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE telegram_id = ?
+    `)
+    .bind(
+      JSON.stringify(mergedData),
+      telegramId
+    )
+    .run();
+
+  return {
+    telegramId,
+    state: current.state,
+    data: mergedData,
+  };
+}
+
+
+export async function clearUserState(
+  db,
+  telegramId
+) {
+  if (!db) {
     return;
   }
 
   await db
     .prepare(`
       DELETE FROM user_states
-      WHERE user_id = ?
+      WHERE telegram_id = ?
     `)
-    .bind(userId)
+    .bind(telegramId)
+    .run();
+}
+
+
+export async function clearAllUserStates(
+  db
+) {
+  if (!db) {
+    return;
+  }
+
+  await db
+    .prepare(`
+      DELETE FROM user_states
+    `)
     .run();
 }
