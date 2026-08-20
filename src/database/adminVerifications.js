@@ -4,40 +4,97 @@
  * مسیر:
  * src/database/adminVerifications.js
  *
- * مسئول:
- * - ثبت درخواست ایجاد کد
- * - تأیید / رد درخواست
- * - استعلام Username
- * - استعلام Telegram ID از پیام Forward
+ * جدول:
+ * admins
  */
 
-/**
- * نرمال‌سازی Username
- *
- * @Amozesh_adminx
- * Amozesh_adminx
- *
- * هر دو تبدیل می‌شوند به:
- *
- * amozesh_adminx
- */
-export function normalizeUsername(username) {
+export async function checkAdminValidity(
+  db,
+  username
+) {
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
+  }
+
   if (!username) {
     return null;
   }
 
-  return username
-    .trim()
-    .replace(/^@+/, '')
-    .toLowerCase();
+  const cleanUsername =
+    String(username)
+      .trim()
+      .replace(/^@/, '');
+
+  const result = await db
+    .prepare(`
+      SELECT
+        id,
+        telegram_id,
+        username,
+        first_name,
+        last_name,
+        status,
+        created_at,
+        updated_at
+      FROM admins
+      WHERE LOWER(username) = LOWER(?)
+        AND status = 'active'
+      LIMIT 1
+    `)
+    .bind(cleanUsername)
+    .first();
+
+  return result || null;
 }
 
-/**
- * پیدا کردن کاربر داخلی از Telegram ID
- */
-export async function getUserByTelegramId(db, telegramId) {
+
+export async function checkAdminValidityByTelegramId(
+  db,
+  telegramId
+) {
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
+  }
+
   if (!telegramId) {
-    throw new Error('Telegram ID is required');
+    return null;
+  }
+
+  const result = await db
+    .prepare(`
+      SELECT
+        id,
+        telegram_id,
+        username,
+        first_name,
+        last_name,
+        status,
+        created_at,
+        updated_at
+      FROM admins
+      WHERE telegram_id = ?
+        AND status = 'active'
+      LIMIT 1
+    `)
+    .bind(telegramId)
+    .first();
+
+  return result || null;
+}
+
+
+export async function getAdminById(
+  db,
+  id
+) {
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
   }
 
   return await db
@@ -47,202 +104,84 @@ export async function getUserByTelegramId(db, telegramId) {
         telegram_id,
         username,
         first_name,
-        last_name
-      FROM users
-      WHERE telegram_id = ?
+        last_name,
+        status,
+        created_at,
+        updated_at
+      FROM admins
+      WHERE id = ?
       LIMIT 1
     `)
-    .bind(telegramId)
+    .bind(id)
     .first();
 }
 
-/**
- * ایجاد درخواست جدید برای تأیید ادمین
- */
-export async function createAdminVerification(
-  db,
-  userId,
-  adminUsername
-) {
-  const normalizedUsername = normalizeUsername(adminUsername);
 
-  if (!normalizedUsername) {
-    throw new Error('Admin username is required');
+export async function createAdmin(
+  db,
+  admin
+) {
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
   }
 
-  return await db
+  const result = await db
     .prepare(`
-      INSERT INTO admin_verifications (
-        user_id,
-        admin_username,
+      INSERT INTO admins (
+        telegram_id,
+        username,
+        first_name,
+        last_name,
         status
       )
-      VALUES (?, ?, 'pending')
+      VALUES (?, ?, ?, ?, ?)
     `)
     .bind(
-      userId,
-      normalizedUsername
+      admin.telegram_id,
+      admin.username ?? null,
+      admin.first_name ?? null,
+      admin.last_name ?? null,
+      admin.status ?? 'active'
     )
     .run();
+
+  return result;
 }
 
-/**
- * آخرین درخواست کاربر
- */
-export async function getUserAdminVerification(db, userId) {
-  return await db
-    .prepare(`
-      SELECT *
-      FROM admin_verifications
-      WHERE user_id = ?
-      ORDER BY id DESC
-      LIMIT 1
-    `)
-    .bind(userId)
-    .first();
-}
 
-/**
- * پیدا کردن درخواست بر اساس ID
- */
-export async function getAdminVerificationById(
+export async function updateAdminStatus(
   db,
-  verificationId
+  telegramId,
+  status
 ) {
-  return await db
-    .prepare(`
-      SELECT
-        av.*,
-        u.telegram_id,
-        u.username,
-        u.first_name,
-        u.last_name
-      FROM admin_verifications av
-      INNER JOIN users u
-        ON u.id = av.user_id
-      WHERE av.id = ?
-      LIMIT 1
-    `)
-    .bind(verificationId)
-    .first();
-}
+  if (!db) {
+    throw new Error(
+      'D1 database is not available'
+    );
+  }
 
-/**
- * تأیید درخواست
- */
-export async function approveAdminVerification(
-  db,
-  verificationId,
-  reviewerUserId
-) {
-  return await db
-    .prepare(`
-      UPDATE admin_verifications
-      SET
-        status = 'approved',
-        reviewed_by = ?,
-        reviewed_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-      AND status = 'pending'
-    `)
-    .bind(
-      reviewerUserId,
-      verificationId
-    )
-    .run();
-}
-
-/**
- * رد درخواست
- */
-export async function rejectAdminVerification(
-  db,
-  verificationId,
-  reviewerUserId
-) {
-  return await db
-    .prepare(`
-      UPDATE admin_verifications
-      SET
-        status = 'rejected',
-        reviewed_by = ?,
-        reviewed_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-      AND status = 'pending'
-    `)
-    .bind(
-      reviewerUserId,
-      verificationId
-    )
-    .run();
-}
-
-/**
- * استعلام با Username
- */
-export async function checkAdminValidity(
-  db,
-  adminUsername
-) {
-  const normalizedUsername = normalizeUsername(adminUsername);
-
-  if (!normalizedUsername) {
-    return null;
+  if (
+    !['active', 'suspended']
+      .includes(status)
+  ) {
+    throw new Error(
+      'Invalid admin status'
+    );
   }
 
   return await db
     .prepare(`
-      SELECT
-        av.id,
-        av.admin_username,
-        av.status,
-        u.telegram_id,
-        u.username,
-        u.first_name,
-        u.last_name
-      FROM admin_verifications av
-      INNER JOIN users u
-        ON u.id = av.user_id
-      WHERE av.admin_username = ?
-      AND av.status = 'approved'
-      ORDER BY av.id DESC
-      LIMIT 1
+      UPDATE admins
+      SET
+        status = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE telegram_id = ?
     `)
-    .bind(normalizedUsername)
-    .first();
-}
-
-/**
- * استعلام با Telegram ID
- *
- * این قسمت برای پیام‌های Forward شده استفاده می‌شود.
- */
-export async function checkAdminValidityByTelegramId(
-  db,
-  telegramId
-) {
-  if (!telegramId) {
-    return null;
-  }
-
-  return await db
-    .prepare(`
-      SELECT
-        av.id,
-        av.admin_username,
-        av.status,
-        u.telegram_id,
-        u.username,
-        u.first_name,
-        u.last_name
-      FROM admin_verifications av
-      INNER JOIN users u
-        ON u.id = av.user_id
-      WHERE u.telegram_id = ?
-      AND av.status = 'approved'
-      ORDER BY av.id DESC
-      LIMIT 1
-    `)
-    .bind(telegramId)
-    .first();
+    .bind(
+      status,
+      telegramId
+    )
+    .run();
 }
