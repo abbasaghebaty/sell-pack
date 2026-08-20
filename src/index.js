@@ -1,65 +1,72 @@
 /**
- * Telegram Bot - Main Worker
+ * EndMark Telegram Bot - Cloudflare Worker
  *
  * مسیر:
  * src/index.js
- *
- * نقطه ورود Cloudflare Worker
  */
 
 import handleCommand from './handlers/commandHandler.js';
 import handleMessage from './handlers/messageHandler.js';
 
 async function processUpdate(update, env, db) {
-  try {
-    /*
-     * پیام معمولی
-     */
+  if (!update || typeof update !== 'object') {
+    return;
+  }
+
+  /*
+   * Message
+   */
+  if (update.message) {
     const message = update.message;
 
-    if (message?.chat) {
-      if (!message.from) {
-        console.log('⚠️ No sender information in message');
-        return;
-      }
-
-      const text = message.text || '';
-
-      console.log(
-        `📨 Processing message from ${message.chat.id}:`,
-        text || '[non-text message]'
-      );
-
-      if (text.startsWith('/')) {
-        console.log(`🎯 Command detected: ${text}`);
-        await handleCommand(message, env, db);
-      } else {
-        console.log('💬 Regular message detected');
-        await handleMessage(message, env, db);
-      }
-
+    if (!message.chat || !message.from) {
       return;
     }
 
-    /*
-     * پیام فورواردی هم داخل update.message می‌آید.
-     * بنابراین همان handleMessage آن را پردازش می‌کند.
-     */
+    const text = message.text || '';
 
-    /*
-     * اگر بعداً Callback Query اضافه شد،
-     * اینجا می‌توانیم جداگانه مدیریت کنیم.
-     */
-
-    console.log('⚠️ Unsupported update type');
-
-  } catch (error) {
-    console.error(
-      '❌ Error in processUpdate:',
-      error.message,
-      error.stack
+    console.log(
+      `📨 Message from ${message.chat.id}:`,
+      text || '[non-text message]'
     );
+
+    if (text.startsWith('/')) {
+      await handleCommand(message, env, db);
+    } else {
+      await handleMessage(message, env, db);
+    }
+
+    return;
   }
+
+  /*
+   * Edited message
+   */
+  if (update.edited_message) {
+    console.log('ℹ️ Edited message ignored');
+    return;
+  }
+
+  /*
+   * Callback Query
+   *
+   * فعلاً ربات از Reply Keyboard استفاده می‌کند،
+   * اما این مسیر را باز نگه می‌داریم تا اگر بعداً
+   * Inline Keyboard اضافه شد، Update گم نشود.
+   */
+  if (update.callback_query) {
+    console.log(
+      'ℹ️ Callback query received:',
+      update.callback_query.data
+    );
+
+    return;
+  }
+
+  console.log(
+    'ℹ️ Unsupported update type:',
+    Object.keys(update)
+  );
 }
 
 export default {
@@ -72,96 +79,59 @@ export default {
        */
       if (url.pathname === '/webhook') {
         if (request.method !== 'POST') {
-          console.warn(
-            '❌ Invalid HTTP method for webhook:',
-            request.method
-          );
-
           return new Response(
             'Method Not Allowed',
             { status: 405 }
           );
         }
 
+        let update;
+
         try {
-          /*
-           * بررسی Token
-           */
-          if (!env.TELEGRAM_BOT_TOKEN) {
-            console.error(
-              '❌ TELEGRAM_BOT_TOKEN not set!'
-            );
-
-            return new Response(
-              'OK',
-              { status: 200 }
-            );
-          }
-
-          /*
-           * دریافت Update
-           */
-          let update;
-
-          try {
-            update = await request.json();
-          } catch (parseError) {
-            console.error(
-              '❌ Failed to parse request JSON:',
-              parseError.message
-            );
-
-            return new Response(
-              'OK',
-              { status: 200 }
-            );
-          }
-
-          console.log(
-            '✅ Update received:',
-            JSON.stringify(update, null, 2)
+          update = await request.json();
+        } catch (error) {
+          console.error(
+            '❌ Invalid webhook JSON:',
+            error.message
           );
 
-          /*
-           * اتصال به D1
-           */
-          const db = env.DB;
+          return new Response('OK', {
+            status: 200,
+          });
+        }
 
-          if (!db) {
-            console.warn(
-              '⚠️ Database not available'
-            );
-          }
+        if (!env.TELEGRAM_BOT_TOKEN) {
+          console.error(
+            '❌ TELEGRAM_BOT_TOKEN is missing'
+          );
 
-          /*
-           * پردازش Update
-           */
+          return new Response('OK', {
+            status: 200,
+          });
+        }
+
+        const db = env.DB || null;
+
+        try {
           await processUpdate(
             update,
             env,
             db
           );
-
-          /*
-           * همیشه 200
-           */
-          return new Response(
-            'OK',
-            { status: 200 }
-          );
-
         } catch (error) {
           console.error(
-            '❌ Webhook processing error:',
+            '❌ Update processing error:',
             error.message,
             error.stack
           );
-
-          return new Response(
-            'OK',
-            { status: 200 }
-          );
         }
+
+        /*
+         * تلگرام باید همیشه 200 دریافت کند.
+         */
+        return new Response('OK', {
+          status: 200,
+        });
       }
 
       /*
@@ -170,27 +140,31 @@ export default {
       if (url.pathname === '/') {
         return Response.json({
           success: true,
-          service: 'telegram-bot-adminx',
+          service: 'telegram-bot-endmark',
           status: 'online',
+          database: Boolean(env.DB),
           bot_token_set:
-            !!env.TELEGRAM_BOT_TOKEN,
+            Boolean(env.TELEGRAM_BOT_TOKEN),
           timestamp:
             new Date().toISOString(),
         });
       }
 
       /*
-       * Health Check
+       * Health
        */
       if (url.pathname === '/health') {
         return Response.json({
           ok: true,
-          message: 'Worker is running',
+          service: 'endmark-bot',
+          database: Boolean(env.DB),
+          timestamp:
+            new Date().toISOString(),
         });
       }
 
       /*
-       * Route not found
+       * Not found
        */
       return Response.json(
         {
@@ -204,22 +178,18 @@ export default {
 
     } catch (error) {
       console.error(
-        '❌ FATAL ERROR in fetch:',
+        '❌ FATAL WORKER ERROR:',
         error.message,
         error.stack
       );
 
-      return new Response(
-        JSON.stringify({
+      return Response.json(
+        {
+          success: false,
           error: 'Internal server error',
-          message: error.message,
-        }),
+        },
         {
           status: 500,
-          headers: {
-            'Content-Type':
-              'application/json',
-          },
         }
       );
     }
