@@ -5,6 +5,10 @@
  * src/api/blupal.js
  */
 
+import {
+  BLUPAL_CONFIG,
+} from '../config/blupal.js';
+
 const BLUPAL_BASE_URL = 'https://blupal.net/api';
 
 function getApiKey(env) {
@@ -15,12 +19,6 @@ function getApiKey(env) {
   }
 
   return apiKey;
-}
-
-function getMode(apiKey) {
-  if (apiKey.startsWith('blu_test_')) return 'sandbox';
-  if (apiKey.startsWith('blu_live_')) return 'live';
-  return null;
 }
 
 async function parseJson(response) {
@@ -37,30 +35,44 @@ async function parseJson(response) {
   }
 }
 
-export async function createBlupalInvoice(env, rialAmount) {
+export async function createBlupalInvoice(
+  env,
+  rialAmount
+) {
   const apiKey = getApiKey(env);
 
-  if (!Number.isInteger(rialAmount) || rialAmount < 100000) {
-    throw new Error('Blupal amount must be at least 100000 IRR');
+  if (
+    !Number.isInteger(rialAmount) ||
+    rialAmount < BLUPAL_CONFIG.MIN_AMOUNT_RIAL
+  ) {
+    throw new Error(
+      `Blupal amount must be at least ${BLUPAL_CONFIG.MIN_AMOUNT_RIAL} IRR`
+    );
   }
 
   const response = await fetch(
     `${BLUPAL_BASE_URL}/v1/invoices/create`,
     {
       method: 'POST',
+
       headers: {
         'Content-Type': 'application/json',
         'X-API-Key': apiKey,
       },
+
       body: JSON.stringify({
         amount: rialAmount,
+        back_url: BLUPAL_CONFIG.BACK_URL,
       }),
     }
   );
 
   const payload = await parseJson(response);
 
-  if (!response.ok || payload.success !== true) {
+  if (
+    !response.ok ||
+    payload.success !== true
+  ) {
     const message =
       payload.message ||
       payload.error ||
@@ -70,40 +82,28 @@ export async function createBlupalInvoice(env, rialAmount) {
   }
 
   return {
-    invoice_id: Number(payload.invoice_id),
-    amount: Number(payload.amount),
-    final_amount: Number(payload.final_amount),
-    status: payload.status,
-    payment_link: payload.payment_link,
-    card_number: payload.card_number ?? null,
-    mode: payload.mode ?? getMode(apiKey),
-    expires_at: payload.expires_at ?? null,
+    invoice_id:
+      Number(payload.invoice_id),
+
+    amount:
+      Number(payload.amount),
+
+    final_amount:
+      Number(payload.final_amount),
+
+    status:
+      payload.status,
+
+    payment_link:
+      payload.payment_link,
+
+    card_number:
+      payload.card_number ?? null,
+
+    mode:
+      payload.mode ?? BLUPAL_CONFIG.MODE,
+
+    expires_at:
+      payload.expires_at ?? null,
   };
-}
-
-export async function getBlupalInvoice(env, invoiceId) {
-  const apiKey = getApiKey(env);
-
-  const response = await fetch(
-    `${BLUPAL_BASE_URL}/v1/invoices/${encodeURIComponent(invoiceId)}`,
-    {
-      method: 'GET',
-      headers: {
-        'X-API-Key': apiKey,
-      },
-    }
-  );
-
-  const payload = await parseJson(response);
-
-  if (!response.ok || payload.success !== true) {
-    const message =
-      payload.message ||
-      payload.error ||
-      `Blupal invoice lookup failed (${response.status})`;
-
-    throw new Error(message);
-  }
-
-  return payload;
 }
