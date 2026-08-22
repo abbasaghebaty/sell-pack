@@ -23,7 +23,12 @@ export async function getActivePurchase(db, userId) {
       SELECT *
       FROM course_purchases
       WHERE user_id = ?
-      AND status IN ('waiting_payment', 'waiting_receipt', 'pending_review', 'approved')
+      AND status IN (
+        'waiting_payment',
+        'waiting_receipt',
+        'pending_review',
+        'approved'
+      )
       ORDER BY id DESC
       LIMIT 1
     `)
@@ -61,11 +66,15 @@ export async function getPendingBlupalPurchase(db, userId) {
 }
 
 /**
- * amountInput = مبلغ به واحد «ده‌هزار تومان».
- * مثال: 2 => 20,000 تومان => 200,000 ریال
- * مثال: 200 => 2,000,000 تومان => 20,000,000 ریال
+ * amountInput = مبلغ بر اساس واحد 10,000 تومان.
  *
- * توجه: طبق قرارداد پروژه، ورودی ربات بدون سه صفر انتهاییِ تومان است.
+ * مثال:
+ *
+ * 20
+ * ↓
+ * 200,000 تومان
+ * ↓
+ * 2,000,000 ریال
  */
 export async function createPurchase(
   db,
@@ -73,10 +82,12 @@ export async function createPurchase(
   amountInput
 ) {
   if (!Number.isInteger(amountInput) || amountInput <= 0) {
-    throw new Error('Invalid amount input');
+    throw new Error(
+      `Invalid amount input: ${amountInput}`
+    );
   }
 
-  const tomanAmount = amountInput * 10000;
+  const tomanAmount = amountInput * 10_000;
   const rialAmount = tomanAmount * 10;
 
   const result = await db
@@ -94,8 +105,16 @@ export async function createPurchase(
     )
     .run();
 
+  const purchaseId = result?.meta?.last_row_id;
+
+  if (!purchaseId) {
+    throw new Error(
+      'Failed to create course purchase record.'
+    );
+  }
+
   return {
-    id: result?.meta?.last_row_id ?? null,
+    id: purchaseId,
     amountInput,
     tomanAmount,
     rialAmount,
@@ -107,7 +126,25 @@ export async function attachBlupalInvoice(
   purchaseId,
   invoice
 ) {
-  await db
+  if (!purchaseId) {
+    throw new Error(
+      'Purchase ID is required.'
+    );
+  }
+
+  if (!invoice?.invoice_id) {
+    throw new Error(
+      'Blupal invoice ID is missing.'
+    );
+  }
+
+  if (!invoice?.payment_link) {
+    throw new Error(
+      'Blupal payment link is missing.'
+    );
+  }
+
+  const result = await db
     .prepare(`
       UPDATE course_purchases
       SET
@@ -120,15 +157,24 @@ export async function attachBlupalInvoice(
     `)
     .bind(
       invoice.invoice_id,
-      invoice.final_amount,
+      invoice.final_amount ?? null,
       invoice.payment_link,
-      invoice.mode,
+      invoice.mode ?? null,
       purchaseId
     )
     .run();
+
+  if (!result?.meta?.changes) {
+    throw new Error(
+      `Failed to attach Blupal invoice to purchase ${purchaseId}.`
+    );
+  }
 }
 
-export async function cancelWaitingPurchase(db, purchaseId) {
+export async function cancelWaitingPurchase(
+  db,
+  purchaseId
+) {
   await db
     .prepare(`
       UPDATE course_purchases
@@ -185,14 +231,14 @@ export async function approveBlupalPurchase(
       AND status != 'approved'
     `)
     .bind(
-      finalAmount,
+      finalAmount ?? null,
       transactionId ?? null,
       mode ?? null,
       purchase.id
     )
     .run();
 
-  const approved = await db
+  return await db
     .prepare(`
       SELECT
         cp.*,
@@ -205,11 +251,12 @@ export async function approveBlupalPurchase(
     `)
     .bind(purchase.id)
     .first();
-
-  return approved;
 }
 
-export async function findPurchaseByInvoiceId(db, invoiceId) {
+export async function findPurchaseByInvoiceId(
+  db,
+  invoiceId
+) {
   return await db
     .prepare(`
       SELECT
