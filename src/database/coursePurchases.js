@@ -61,8 +61,11 @@ export async function getPendingBlupalPurchase(db, userId) {
 }
 
 /**
- * amountInput = مبلغ به واحد «هزار تومان».
- * مثال: 200 => 200,000 تومان => 2,000,000 ریال
+ * amountInput = مبلغ به واحد «ده‌هزار تومان».
+ * مثال: 2 => 20,000 تومان => 200,000 ریال
+ * مثال: 200 => 2,000,000 تومان => 20,000,000 ریال
+ *
+ * توجه: طبق قرارداد پروژه، ورودی ربات بدون سه صفر انتهاییِ تومان است.
  */
 export async function createPurchase(
   db,
@@ -73,7 +76,7 @@ export async function createPurchase(
     throw new Error('Invalid amount input');
   }
 
-  const tomanAmount = amountInput * 1000;
+  const tomanAmount = amountInput * 10000;
   const rialAmount = tomanAmount * 10;
 
   const result = await db
@@ -148,9 +151,13 @@ export async function approveBlupalPurchase(
 ) {
   const purchase = await db
     .prepare(`
-      SELECT *
-      FROM course_purchases
-      WHERE blupal_invoice_id = ?
+      SELECT
+        cp.*,
+        u.telegram_id
+      FROM course_purchases cp
+      INNER JOIN users u
+        ON u.id = cp.user_id
+      WHERE cp.blupal_invoice_id = ?
       LIMIT 1
     `)
     .bind(invoiceId)
@@ -185,23 +192,33 @@ export async function approveBlupalPurchase(
     )
     .run();
 
-  return await db
+  const approved = await db
     .prepare(`
-      SELECT *
-      FROM course_purchases
-      WHERE id = ?
+      SELECT
+        cp.*,
+        u.telegram_id
+      FROM course_purchases cp
+      INNER JOIN users u
+        ON u.id = cp.user_id
+      WHERE cp.id = ?
       LIMIT 1
     `)
     .bind(purchase.id)
     .first();
+
+  return approved;
 }
 
 export async function findPurchaseByInvoiceId(db, invoiceId) {
   return await db
     .prepare(`
-      SELECT *
-      FROM course_purchases
-      WHERE blupal_invoice_id = ?
+      SELECT
+        cp.*,
+        u.telegram_id
+      FROM course_purchases cp
+      INNER JOIN users u
+        ON u.id = cp.user_id
+      WHERE cp.blupal_invoice_id = ?
       LIMIT 1
     `)
     .bind(invoiceId)
