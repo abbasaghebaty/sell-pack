@@ -18,14 +18,8 @@ function getApiKey(env) {
 }
 
 function getMode(apiKey) {
-  if (apiKey.startsWith('blu_test_')) {
-    return 'sandbox';
-  }
-
-  if (apiKey.startsWith('blu_live_')) {
-    return 'live';
-  }
-
+  if (apiKey.startsWith('blu_test_')) return 'sandbox';
+  if (apiKey.startsWith('blu_live_')) return 'live';
   return null;
 }
 
