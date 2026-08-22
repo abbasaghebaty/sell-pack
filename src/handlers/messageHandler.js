@@ -57,6 +57,10 @@ import {
 } from '../api/blupal.js';
 
 import {
+  BLUPAL_CONFIG,
+} from '../config/blupal.js';
+
+import {
   USER_STATES,
   setUserState,
   getUserState,
@@ -303,7 +307,7 @@ async function startDirectCoursePurchase(message, env, db) {
   // مبلغ داخل ربات بر مبنای «ده‌هزار تومان» است:
   // 2 => 20,000 تومان => 200,000 ریال
   // 200 => 2,000,000 تومان => 20,000,000 ریال
-  const amountInput = 200;
+  const amountInput = BLUPAL_CONFIG.COURSE_PRICE_INPUT;
 
   if (!db) {
     return await sendMessage(
