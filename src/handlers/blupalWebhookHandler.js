@@ -23,23 +23,13 @@ function escapeHtml(value) {
     .replace(/'/g, '&#039;');
 }
 
-export async function handleBlupalWebhook(
-  request,
-  env,
-  db
-) {
+export async function handleBlupalWebhook(request, env, db) {
   if (request.method !== 'POST') {
-    return Response.json(
-      { error: 'Method Not Allowed' },
-      { status: 405 }
-    );
+    return Response.json({ error: 'Method Not Allowed' }, { status: 405 });
   }
 
   if (!db) {
-    return Response.json(
-      { error: 'Database unavailable' },
-      { status: 500 }
-    );
+    return Response.json({ error: 'Database unavailable' }, { status: 500 });
   }
 
   let payload;
@@ -47,20 +37,11 @@ export async function handleBlupalWebhook(
   try {
     payload = await request.json();
   } catch {
-    return Response.json(
-      { error: 'Invalid JSON' },
-      { status: 400 }
-    );
+    return Response.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  if (
-    payload?.event !== 'payment.completed' ||
-    payload?.status !== 'PAID'
-  ) {
-    return Response.json(
-      { received: true, ignored: true },
-      { status: 200 }
-    );
+  if (payload?.event !== 'payment.completed' || payload?.status !== 'PAID') {
+    return Response.json({ received: true, ignored: true }, { status: 200 });
   }
 
   const invoiceId = Number(payload.invoice_id);
@@ -72,41 +53,22 @@ export async function handleBlupalWebhook(
     !Number.isInteger(amount) ||
     !Number.isInteger(finalAmount)
   ) {
-    return Response.json(
-      { error: 'Invalid payment payload' },
-      { status: 400 }
-    );
+    return Response.json({ error: 'Invalid payment payload' }, { status: 400 });
   }
 
-  const purchase = await findPurchaseByInvoiceId(
-    db,
-    invoiceId
-  );
+  const purchase = await findPurchaseByInvoiceId(db, invoiceId);
 
   if (!purchase) {
-    console.error(
-      `Blupal webhook: invoice ${invoiceId} not found in DB`
-    );
-
-    return Response.json(
-      { error: 'Invoice not found' },
-      { status: 404 }
-    );
+    console.error(`Blupal webhook: invoice ${invoiceId} not found in DB`);
+    return Response.json({ error: 'Invoice not found' }, { status: 404 });
   }
 
   if (Number(purchase.amount) !== amount) {
-    console.error(
-      `Blupal webhook amount mismatch for invoice ${invoiceId}`,
-      {
-        expected: purchase.amount,
-        received: amount,
-      }
-    );
-
-    return Response.json(
-      { error: 'Amount mismatch' },
-      { status: 400 }
-    );
+    console.error(`Blupal webhook amount mismatch for invoice ${invoiceId}`, {
+      expected: purchase.amount,
+      received: amount,
+    });
+    return Response.json({ error: 'Amount mismatch' }, { status: 400 });
   }
 
   const apiKey = env.BLUPAL_API_KEY?.trim() || '';
@@ -122,30 +84,20 @@ export async function handleBlupalWebhook(
     payload.mode &&
     payload.mode !== expectedMode
   ) {
-    console.error(
-      `Blupal webhook mode mismatch for invoice ${invoiceId}`
-    );
-
-    return Response.json(
-      { error: 'Mode mismatch' },
-      { status: 400 }
-    );
+    console.error(`Blupal webhook mode mismatch for invoice ${invoiceId}`);
+    return Response.json({ error: 'Mode mismatch' }, { status: 400 });
   }
 
-  const approvedPurchase =
-    await approveBlupalPurchase(
-      db,
-      invoiceId,
-      payload.transaction_id ?? null,
-      finalAmount,
-      payload.mode ?? expectedMode
-    );
+  const approvedPurchase = await approveBlupalPurchase(
+    db,
+    invoiceId,
+    payload.transaction_id ?? null,
+    finalAmount,
+    payload.mode ?? expectedMode
+  );
 
   if (!approvedPurchase) {
-    return Response.json(
-      { error: 'Could not approve purchase' },
-      { status: 500 }
-    );
+    return Response.json({ error: 'Could not approve purchase' }, { status: 500 });
   }
 
   if (approvedPurchase.status === 'approved') {
@@ -168,8 +120,5 @@ export async function handleBlupalWebhook(
     }
   }
 
-  return Response.json(
-    { received: true },
-    { status: 200 }
-  );
+  return Response.json({ received: true }, { status: 200 });
 }
