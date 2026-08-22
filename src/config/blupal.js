@@ -12,9 +12,11 @@
 export const BLUPAL_CONFIG = Object.freeze({
   MODE: 'sandbox',
 
-  WEBHOOK_PATH: '/blupal/webhook',
+  WEBHOOK_PATH:
+    'https://sell-pack.abbas-aghebaty.workers.dev/blupal/webhook',
 
-  BACK_URL: 'https://example.com/back',
+  BACK_URL:
+    'https://example.com/back',
 
   MIN_AMOUNT_RIAL: 100000,
 });
