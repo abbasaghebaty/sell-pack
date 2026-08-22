@@ -7,6 +7,7 @@
 
 export const COURSE_MENU_BUTTONS = Object.freeze({
   VERIFY_ADMIN: '🔎 استعلام ادمین',
+  BUY_DIRECT: '💳 خرید مستقیم دوره',
   BACK: '🔙 بازگشت',
 });
 
@@ -14,6 +15,10 @@ export function getCourseMenuKeyboard() {
   return {
     keyboard: [
       [
+        {
+          text: COURSE_MENU_BUTTONS.BUY_DIRECT,
+          style: 'success',
+        },
         {
           text: COURSE_MENU_BUTTONS.VERIFY_ADMIN,
           style: 'primary',
