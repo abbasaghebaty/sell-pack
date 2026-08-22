@@ -5,7 +5,11 @@
  * src/config/blupal.js
  *
  * API Key را اینجا قرار نده.
- * کلید فقط در Cloudflare Secret با نام BLUPAL_API_KEY باشد.
+ * کلید فقط باید در Cloudflare Secret با نام:
+ *
+ * BLUPAL_API_KEY
+ *
+ * قرار داشته باشد.
  */
 
 export const BLUPAL_CONFIG = Object.freeze({
@@ -17,8 +21,9 @@ export const BLUPAL_CONFIG = Object.freeze({
   BACK_URL:
     'https://example.com/back',
 
-  // 20 => 200,000 تومان => 2,000,000 ریال
-  COURSE_PRICE_INPUT: 20,
+  // قیمت واقعی دوره:
+  // 200,000 تومان = 2,000,000 ریال
+  COURSE_PRICE_RIAL: 2_000_000,
 
-  MIN_AMOUNT_RIAL: 100000,
+  MIN_AMOUNT_RIAL: 100_000,
 });
