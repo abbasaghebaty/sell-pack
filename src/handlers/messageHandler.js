@@ -305,11 +305,17 @@ async function handleAdminVerificationInput(message, env, db) {
   );
 }
 
-async function startDirectCoursePurchase(message, env, db) {
-  const botToken = env.TELEGRAM_BOT_TOKEN;
-  const chatId = message.chat.id;
+async function startDirectCoursePurchase(
+  message,
+  env,
+  db
+) {
+  const botToken =
+    env.TELEGRAM_BOT_TOKEN;
 
-  // مبلغ دوره از کانفیگ اصلی پروژه
+  const chatId =
+    message.chat.id;
+
   const amountInput =
     BLUPAL_CONFIG.COURSE_PRICE_INPUT;
 
@@ -336,7 +342,7 @@ async function startDirectCoursePurchase(message, env, db) {
     }
 
     /*
-     * بررسی خرید تأییدشده
+     * قبلاً خرید کرده؟
      */
     const approvedPurchase =
       await getApprovedPurchase(
@@ -354,11 +360,7 @@ async function startDirectCoursePurchase(message, env, db) {
     }
 
     /*
-     * بررسی فاکتور Pending قبلی
-     *
-     * دیگر به payment_link وابسته نیستیم.
-     * اگر فاکتور قبلی هنوز معتبر/در انتظار پرداخت باشد،
-     * همان فاکتور را مستقیم داخل تلگرام نمایش می‌دهیم.
+     * فاکتور Pending قبلی
      */
     const pendingPurchase =
       await getPendingBlupalPurchase(
@@ -381,6 +383,10 @@ async function startDirectCoursePurchase(message, env, db) {
             Number(
               pendingPurchase.blupal_final_amount
             ),
+
+          expiresAt:
+            pendingPurchase.blupal_expires_at ??
+            null,
         });
 
       const paymentKeyboard =
@@ -400,7 +406,7 @@ async function startDirectCoursePurchase(message, env, db) {
     }
 
     /*
-     * ایجاد Purchase در دیتابیس
+     * ایجاد خرید جدید
      */
     const purchase =
       await createPurchase(
@@ -411,10 +417,7 @@ async function startDirectCoursePurchase(message, env, db) {
 
     try {
       /*
-       * ساخت فاکتور در Blupal
-       *
-       * final_amount در همین پاسخ مشخص می‌شود.
-       * این همان مبلغ دقیق موردنیاز برای پرداخت است.
+       * ساخت فاکتور Blupal
        */
       const invoice =
         await createBlupalInvoice(
@@ -422,19 +425,8 @@ async function startDirectCoursePurchase(message, env, db) {
           purchase.rialAmount
         );
 
-      if (
-        !invoice?.invoice_id ||
-        !Number.isInteger(
-          Number(invoice.final_amount)
-        )
-      ) {
-        throw new Error(
-          'Invalid Blupal invoice response.'
-        );
-      }
-
       /*
-       * ذخیره فاکتور در D1
+       * ذخیره فاکتور
        */
       await attachBlupalInvoice(
         db,
@@ -443,7 +435,7 @@ async function startDirectCoursePurchase(message, env, db) {
       );
 
       /*
-       * ساخت متن پرداخت
+       * ساخت پیام پرداخت داخل Telegram
        */
       const paymentMessage =
         buildPaymentMessage({
@@ -454,11 +446,12 @@ async function startDirectCoursePurchase(message, env, db) {
             Number(invoice.final_amount),
 
           expiresAt:
-            invoice.expires_at,
+            invoice.expires_at ??
+            null,
         });
 
       /*
-       * ساخت دکمه‌های Copy
+       * دکمه‌های کپی
        */
       const paymentKeyboard =
         buildPaymentKeyboard(
@@ -466,9 +459,7 @@ async function startDirectCoursePurchase(message, env, db) {
         );
 
       /*
-       * ارسال مستقیم فاکتور داخل Telegram
-       *
-       * دیگر payment_link به کاربر نمایش داده نمی‌شود.
+       * ارسال مستقیم فاکتور
        */
       return await sendMessage(
         botToken,
@@ -478,10 +469,6 @@ async function startDirectCoursePurchase(message, env, db) {
       );
 
     } catch (invoiceError) {
-      /*
-       * اگر ساخت فاکتور شکست خورد،
-       * Purchase نیمه‌کاره نماند.
-       */
       await cancelWaitingPurchase(
         db,
         purchase.id
