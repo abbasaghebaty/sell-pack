@@ -5,7 +5,10 @@
  * src/database/coursePurchases.js
  */
 
-export async function getUserByTelegramId(db, telegramId) {
+export async function getUserByTelegramId(
+  db,
+  telegramId
+) {
   return await db
     .prepare(`
       SELECT id, telegram_id
@@ -17,7 +20,11 @@ export async function getUserByTelegramId(db, telegramId) {
     .first();
 }
 
-export async function getActivePurchase(db, userId) {
+
+export async function getActivePurchase(
+  db,
+  userId
+) {
   return await db
     .prepare(`
       SELECT *
@@ -36,7 +43,11 @@ export async function getActivePurchase(db, userId) {
     .first();
 }
 
-export async function getApprovedPurchase(db, userId) {
+
+export async function getApprovedPurchase(
+  db,
+  userId
+) {
   return await db
     .prepare(`
       SELECT *
@@ -50,7 +61,11 @@ export async function getApprovedPurchase(db, userId) {
     .first();
 }
 
-export async function getPendingBlupalPurchase(db, userId) {
+
+export async function getPendingBlupalPurchase(
+  db,
+  userId
+) {
   return await db
     .prepare(`
       SELECT *
@@ -58,6 +73,7 @@ export async function getPendingBlupalPurchase(db, userId) {
       WHERE user_id = ?
       AND status = 'waiting_payment'
       AND blupal_invoice_id IS NOT NULL
+      AND blupal_final_amount IS NOT NULL
       ORDER BY id DESC
       LIMIT 1
     `)
@@ -65,10 +81,9 @@ export async function getPendingBlupalPurchase(db, userId) {
     .first();
 }
 
+
 /**
- * amountInput = مبلغ بر اساس واحد 10,000 تومان.
- *
- * مثال:
+ * amountInput:
  *
  * 20
  * ↓
@@ -81,31 +96,39 @@ export async function createPurchase(
   userId,
   amountInput
 ) {
-  if (!Number.isInteger(amountInput) || amountInput <= 0) {
+  if (
+    !Number.isInteger(amountInput) ||
+    amountInput <= 0
+  ) {
     throw new Error(
       `Invalid amount input: ${amountInput}`
     );
   }
 
-  const tomanAmount = amountInput * 10_000;
-  const rialAmount = tomanAmount * 10;
+  const tomanAmount =
+    amountInput * 10_000;
 
-  const result = await db
-    .prepare(`
-      INSERT INTO course_purchases (
-        user_id,
-        amount,
-        status
+  const rialAmount =
+    tomanAmount * 10;
+
+  const result =
+    await db
+      .prepare(`
+        INSERT INTO course_purchases (
+          user_id,
+          amount,
+          status
+        )
+        VALUES (?, ?, 'waiting_payment')
+      `)
+      .bind(
+        userId,
+        rialAmount
       )
-      VALUES (?, ?, 'waiting_payment')
-    `)
-    .bind(
-      userId,
-      rialAmount
-    )
-    .run();
+      .run();
 
-  const purchaseId = result?.meta?.last_row_id;
+  const purchaseId =
+    result?.meta?.last_row_id;
 
   if (!purchaseId) {
     throw new Error(
@@ -120,6 +143,7 @@ export async function createPurchase(
     rialAmount,
   };
 }
+
 
 export async function attachBlupalInvoice(
   db,
@@ -138,31 +162,56 @@ export async function attachBlupalInvoice(
     );
   }
 
-  if (!invoice?.payment_link) {
+  if (
+    !Number.isInteger(
+      Number(invoice.amount)
+    )
+  ) {
     throw new Error(
-      'Blupal payment link is missing.'
+      'Blupal invoice amount is missing.'
     );
   }
 
-  const result = await db
-    .prepare(`
-      UPDATE course_purchases
-      SET
-        blupal_invoice_id = ?,
-        blupal_final_amount = ?,
-        blupal_payment_link = ?,
-        payment_mode = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `)
-    .bind(
-      invoice.invoice_id,
-      invoice.final_amount ?? null,
-      invoice.payment_link,
-      invoice.mode ?? null,
-      purchaseId
+  if (
+    !Number.isInteger(
+      Number(invoice.final_amount)
     )
-    .run();
+  ) {
+    throw new Error(
+      'Blupal final amount is missing.'
+    );
+  }
+
+  const result =
+    await db
+      .prepare(`
+        UPDATE course_purchases
+        SET
+          blupal_invoice_id = ?,
+          blupal_final_amount = ?,
+          blupal_payment_link = ?,
+          blupal_expires_at = ?,
+          payment_mode = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `)
+      .bind(
+        Number(invoice.invoice_id),
+
+        Number(invoice.final_amount),
+
+        invoice.payment_link ??
+          null,
+
+        invoice.expires_at ??
+          null,
+
+        invoice.mode ??
+          null,
+
+        purchaseId
+      )
+      .run();
 
   if (!result?.meta?.changes) {
     throw new Error(
@@ -170,6 +219,7 @@ export async function attachBlupalInvoice(
     );
   }
 }
+
 
 export async function cancelWaitingPurchase(
   db,
@@ -188,6 +238,7 @@ export async function cancelWaitingPurchase(
     .run();
 }
 
+
 export async function approveBlupalPurchase(
   db,
   invoiceId,
@@ -195,19 +246,20 @@ export async function approveBlupalPurchase(
   finalAmount,
   mode
 ) {
-  const purchase = await db
-    .prepare(`
-      SELECT
-        cp.*,
-        u.telegram_id
-      FROM course_purchases cp
-      INNER JOIN users u
-        ON u.id = cp.user_id
-      WHERE cp.blupal_invoice_id = ?
-      LIMIT 1
-    `)
-    .bind(invoiceId)
-    .first();
+  const purchase =
+    await db
+      .prepare(`
+        SELECT
+          cp.*,
+          u.telegram_id
+        FROM course_purchases cp
+        INNER JOIN users u
+          ON u.id = cp.user_id
+        WHERE cp.blupal_invoice_id = ?
+        LIMIT 1
+      `)
+      .bind(invoiceId)
+      .first();
 
   if (!purchase) {
     return null;
@@ -252,6 +304,7 @@ export async function approveBlupalPurchase(
     .bind(purchase.id)
     .first();
 }
+
 
 export async function findPurchaseByInvoiceId(
   db,
