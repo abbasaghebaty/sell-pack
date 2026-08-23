@@ -5,35 +5,56 @@
  * src/utils/paymentMessage.js
  */
 
-import { PAYMENT_CONFIG } from '../config/payment.js';
+import {
+  PAYMENT_CONFIG,
+} from '../config/payment.js';
 
-function formatNumber(value) {
-  return Number(value).toLocaleString('fa-IR');
-}
 
 /**
  * تبدیل ریال به تومان
  *
  * مثال:
+ *
  * 2,000,000 ریال
  * => 200,000 تومان
  */
 export function rialToToman(rialAmount) {
-  return Math.floor(Number(rialAmount) / 10);
+  const value = Number(rialAmount);
+
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.floor(value / 10);
 }
 
+
 /**
- * نمایش مبلغ به فرمت:
+ * نمایش مبلغ به صورت T
  *
- * 200T
- * 2035T
- * 1T
+ * T = هزار تومان
  *
- * یعنی تقسیم تومان بر 1000.
+ * مثال:
+ *
+ * 1,000 تومان
+ * => 1T
+ *
+ * 200,000 تومان
+ * => 200T
+ *
+ * 203,500 تومان
+ * => 203.5T
+ *
+ * 2,035,000 تومان
+ * => 2035T
  */
 export function formatTomanCompact(rialAmount) {
   const toman = rialToToman(rialAmount);
   const compact = toman / 1000;
+
+  if (!Number.isFinite(compact)) {
+    return '0T';
+  }
 
   if (Number.isInteger(compact)) {
     return `${compact}T`;
@@ -42,15 +63,26 @@ export function formatTomanCompact(rialAmount) {
   return `${Number(compact.toFixed(3))}T`;
 }
 
+
 /**
  * ساخت کیبورد پرداخت
  *
- * copy_text مستقیماً متن مشخص‌شده را
- * داخل Clipboard کاربر کپی می‌کند.
+ * تمام دکمه‌های اطلاعاتی از copy_text استفاده می‌کنند
+ * تا با کلیک، مقدار موردنظر مستقیماً داخل Clipboard
+ * کاربر قرار بگیرد.
  */
 export function buildPaymentKeyboard(finalAmountRial) {
-  const cardNumber = PAYMENT_CONFIG.CARD_NUMBER;
-  const finalToman = rialToToman(finalAmountRial);
+  const cardNumber =
+    String(PAYMENT_CONFIG.CARD_NUMBER || '').trim();
+
+  const cardHolder =
+    String(PAYMENT_CONFIG.CARD_HOLDER || '').trim();
+
+  const exactAmountRial =
+    String(Math.trunc(Number(finalAmountRial)));
+
+  const compactAmount =
+    formatTomanCompact(finalAmountRial);
 
   return {
     inline_keyboard: [
@@ -62,68 +94,112 @@ export function buildPaymentKeyboard(finalAmountRial) {
           },
         },
         {
-          text: `👤 ${PAYMENT_CONFIG.CARD_HOLDER}`,
-          callback_data: 'payment_card_holder',
+          text: `👤 ${cardHolder}`,
+          copy_text: {
+            text: cardHolder,
+          },
         },
       ],
+
       [
         {
-          text: `📋 کپی مبلغ ${formatTomanCompact(finalAmountRial)}`,
+          text: '📋 کپی مبلغ',
           copy_text: {
-            text: String(finalAmountRial),
+            text: exactAmountRial,
           },
         },
         {
-          text: `${formatTomanCompact(finalAmountRial)}`,
-          callback_data: `payment_amount_${finalAmountRial}`,
+          text: compactAmount,
+          copy_text: {
+            text: exactAmountRial,
+          },
         },
       ],
     ],
   };
 }
 
+
 /**
- * ساخت متن کامل فاکتور
+ * ساخت متن کامل فاکتور پرداخت
  */
 export function buildPaymentMessage({
   baseAmountRial,
   finalAmountRial,
   expiresAt = null,
 }) {
-  const baseToman = rialToToman(baseAmountRial);
-  const finalToman = rialToToman(finalAmountRial);
+  const baseAmount =
+    Number(baseAmountRial);
 
-  const additionalToman = finalToman - baseToman;
+  const finalAmount =
+    Number(finalAmountRial);
 
-  const baseCompact = formatTomanCompact(baseAmountRial);
-  const finalCompact = formatTomanCompact(finalAmountRial);
-  const additionalCompact = formatTomanCompact(
-    additionalToman * 10
-  );
+  if (
+    !Number.isFinite(baseAmount) ||
+    !Number.isFinite(finalAmount) ||
+    baseAmount <= 0 ||
+    finalAmount <= 0
+  ) {
+    throw new Error(
+      'Invalid payment amount.'
+    );
+  }
 
-  const expiresText = expiresAt
-    ? `\n⏳ اعتبار فاکتور: <b>${escapeHtml(expiresAt)}</b>`
-    : '';
+  const baseToman =
+    rialToToman(baseAmount);
+
+  const finalToman =
+    rialToToman(finalAmount);
+
+  const extraToman =
+    Math.max(
+      0,
+      finalToman - baseToman
+    );
+
+  const baseCompact =
+    formatTomanCompact(baseAmount);
+
+  const extraCompact =
+    formatTomanCompact(
+      extraToman * 10
+    );
+
+  const finalCompact =
+    formatTomanCompact(finalAmount);
+
+  let expiresText = '';
+
+  if (expiresAt) {
+    expiresText =
+      `\n⏳ اعتبار فاکتور: <b>${escapeHtml(expiresAt)}</b>`;
+  }
 
   return (
     `💳 <b>خرید مستقیم دوره</b>\n\n` +
 
-    `مبلغ دوره: <b>${baseCompact}</b> تومان\n` +
-    `هزینه و افزایش فاکتور: <b>${additionalCompact}</b> تومان\n` +
-    `مبلغ نهایی پرداخت: <b>${finalCompact}</b> تومان\n\n` +
+    `مبلغ دوره: <b>${baseCompact}</b>\n` +
+    `هزینه و کارمزد: <b>${extraCompact}</b>\n` +
+    `مبلغ نهایی پرداخت: <b>${finalCompact}</b>\n\n` +
 
     `🏦 <b>اطلاعات پرداخت</b>\n\n` +
+
     `شماره کارت:\n` +
     `<code>${escapeHtml(PAYMENT_CONFIG.CARD_NUMBER)}</code>\n\n` +
 
     `مالک حساب:\n` +
     `<b>${escapeHtml(PAYMENT_CONFIG.CARD_HOLDER)}</b>\n\n` +
 
-    `مبلغ نهایی را دقیقاً طبق فاکتور واریز کنید.` +
+    `مبلغ نهایی را دقیقاً طبق همین فاکتور واریز کنید.` +
+
     expiresText
   );
 }
 
+
+/**
+ * Telegram HTML escape
+ */
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
