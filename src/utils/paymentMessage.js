@@ -13,8 +13,6 @@ import {
 /**
  * تبدیل ریال به تومان
  *
- * مثال:
- *
  * 2,000,000 ریال
  * => 200,000 تومان
  */
@@ -30,11 +28,9 @@ export function rialToToman(rialAmount) {
 
 
 /**
- * نمایش مبلغ به صورت T
+ * نمایش مبلغ به فرمت T
  *
  * T = هزار تومان
- *
- * مثال:
  *
  * 1,000 تومان
  * => 1T
@@ -67,9 +63,8 @@ export function formatTomanCompact(rialAmount) {
 /**
  * ساخت کیبورد پرداخت
  *
- * تمام دکمه‌های اطلاعاتی از copy_text استفاده می‌کنند
- * تا با کلیک، مقدار موردنظر مستقیماً داخل Clipboard
- * کاربر قرار بگیرد.
+ * Telegram copy_text را مستقیماً در Clipboard
+ * کاربر قرار می‌دهد.
  */
 export function buildPaymentKeyboard(finalAmountRial) {
   const cardNumber =
@@ -79,10 +74,21 @@ export function buildPaymentKeyboard(finalAmountRial) {
     String(PAYMENT_CONFIG.CARD_HOLDER || '').trim();
 
   const exactAmountRial =
-    String(Math.trunc(Number(finalAmountRial)));
+    Math.trunc(Number(finalAmountRial));
 
   const compactAmount =
     formatTomanCompact(finalAmountRial);
+
+  if (
+    !cardNumber ||
+    !cardHolder ||
+    !Number.isInteger(exactAmountRial) ||
+    exactAmountRial <= 0
+  ) {
+    throw new Error(
+      'Invalid payment keyboard configuration.'
+    );
+  }
 
   return {
     inline_keyboard: [
@@ -105,13 +111,13 @@ export function buildPaymentKeyboard(finalAmountRial) {
         {
           text: '📋 کپی مبلغ',
           copy_text: {
-            text: exactAmountRial,
+            text: String(exactAmountRial),
           },
         },
         {
           text: compactAmount,
           copy_text: {
-            text: exactAmountRial,
+            text: String(exactAmountRial),
           },
         },
       ],
@@ -121,7 +127,7 @@ export function buildPaymentKeyboard(finalAmountRial) {
 
 
 /**
- * ساخت متن کامل فاکتور پرداخت
+ * ساخت متن کامل فاکتور
  */
 export function buildPaymentMessage({
   baseAmountRial,
@@ -135,13 +141,19 @@ export function buildPaymentMessage({
     Number(finalAmountRial);
 
   if (
-    !Number.isFinite(baseAmount) ||
-    !Number.isFinite(finalAmount) ||
+    !Number.isInteger(baseAmount) ||
+    !Number.isInteger(finalAmount) ||
     baseAmount <= 0 ||
     finalAmount <= 0
   ) {
     throw new Error(
       'Invalid payment amount.'
+    );
+  }
+
+  if (finalAmount < baseAmount) {
+    throw new Error(
+      'Final payment amount cannot be lower than base amount.'
     );
   }
 
@@ -152,10 +164,7 @@ export function buildPaymentMessage({
     rialToToman(finalAmount);
 
   const extraToman =
-    Math.max(
-      0,
-      finalToman - baseToman
-    );
+    finalToman - baseToman;
 
   const baseCompact =
     formatTomanCompact(baseAmount);
@@ -167,6 +176,18 @@ export function buildPaymentMessage({
 
   const finalCompact =
     formatTomanCompact(finalAmount);
+
+  const cardNumber =
+    String(PAYMENT_CONFIG.CARD_NUMBER || '').trim();
+
+  const cardHolder =
+    String(PAYMENT_CONFIG.CARD_HOLDER || '').trim();
+
+  if (!cardNumber || !cardHolder) {
+    throw new Error(
+      'Payment card configuration is missing.'
+    );
+  }
 
   let expiresText = '';
 
@@ -185,10 +206,10 @@ export function buildPaymentMessage({
     `🏦 <b>اطلاعات پرداخت</b>\n\n` +
 
     `شماره کارت:\n` +
-    `<code>${escapeHtml(PAYMENT_CONFIG.CARD_NUMBER)}</code>\n\n` +
+    `<code>${escapeHtml(cardNumber)}</code>\n\n` +
 
     `مالک حساب:\n` +
-    `<b>${escapeHtml(PAYMENT_CONFIG.CARD_HOLDER)}</b>\n\n` +
+    `<b>${escapeHtml(cardHolder)}</b>\n\n` +
 
     `مبلغ نهایی را دقیقاً طبق همین فاکتور واریز کنید.` +
 
@@ -197,9 +218,6 @@ export function buildPaymentMessage({
 }
 
 
-/**
- * Telegram HTML escape
- */
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
