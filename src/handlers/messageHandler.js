@@ -309,10 +309,9 @@ async function startDirectCoursePurchase(message, env, db) {
   const botToken = env.TELEGRAM_BOT_TOKEN;
   const chatId = message.chat.id;
 
-  // مبلغ داخل ربات بر مبنای «ده‌هزار تومان» است:
-  // 2 => 20,000 تومان => 200,000 ریال
-  // 200 => 2,000,000 تومان => 20,000,000 ریال
-  const amountInput = BLUPAL_CONFIG.COURSE_PRICE_INPUT;
+  // مبلغ دوره از کانفیگ اصلی پروژه
+  const amountInput =
+    BLUPAL_CONFIG.COURSE_PRICE_INPUT;
 
   if (!db) {
     return await sendMessage(
@@ -324,13 +323,26 @@ async function startDirectCoursePurchase(message, env, db) {
   }
 
   try {
-    const user = await ensureUser(db, message.from);
+    const user =
+      await ensureUser(
+        db,
+        message.from
+      );
 
     if (!user?.id) {
-      throw new Error('Could not resolve internal user id');
+      throw new Error(
+        'Could not resolve internal user id'
+      );
     }
 
-    const approvedPurchase = await getApprovedPurchase(db, user.id);
+    /*
+     * بررسی خرید تأییدشده
+     */
+    const approvedPurchase =
+      await getApprovedPurchase(
+        db,
+        user.id
+      );
 
     if (approvedPurchase) {
       return await sendMessage(
@@ -341,80 +353,143 @@ async function startDirectCoursePurchase(message, env, db) {
       );
     }
 
-    const pendingPurchase = await getPendingBlupalPurchase(db, user.id);
+    /*
+     * بررسی فاکتور Pending قبلی
+     *
+     * دیگر به payment_link وابسته نیستیم.
+     * اگر فاکتور قبلی هنوز معتبر/در انتظار پرداخت باشد،
+     * همان فاکتور را مستقیم داخل تلگرام نمایش می‌دهیم.
+     */
+    const pendingPurchase =
+      await getPendingBlupalPurchase(
+        db,
+        user.id
+      );
 
-    if (pendingPurchase?.blupal_payment_link) {
-      const amountToman = Math.floor(Number(pendingPurchase.amount) / 10);
-      const finalToman = Math.floor(Number(pendingPurchase.blupal_final_amount) / 10);
+    if (
+      pendingPurchase?.blupal_invoice_id &&
+      pendingPurchase?.blupal_final_amount
+    ) {
+      const paymentMessage =
+        buildPaymentMessage({
+          baseAmountRial:
+            Number(
+              pendingPurchase.amount
+            ),
+
+          finalAmountRial:
+            Number(
+              pendingPurchase.blupal_final_amount
+            ),
+        });
+
+      const paymentKeyboard =
+        buildPaymentKeyboard(
+          Number(
+            pendingPurchase.blupal_final_amount
+          )
+        );
 
       return await sendMessage(
         botToken,
         chatId,
-        `💳 <b>پرداخت دوره</b>\n\n` +
-        `مبلغ پایه: <b>${amountToman.toLocaleString('fa-IR')}</b> تومان\n` +
-        `مبلغ نهایی جهت واریز: <b>${finalToman.toLocaleString('fa-IR')}</b> تومان\n\n` +
-        `فاکتور قبلی شما هنوز معتبر است. برای پرداخت از دکمه زیر استفاده کنید.`,
-        {
-          inline_keyboard: [
-            [
-              {
-                text: '💳 پرداخت / مشاهده فاکتور',
-                url: pendingPurchase.blupal_payment_link,
-              },
-            ],
-          ],
-        }
+        `⚠️ <b>فاکتور قبلی شما هنوز در انتظار پرداخت است.</b>\n\n` +
+        paymentMessage,
+        paymentKeyboard
       );
     }
 
-    const purchase = await createPurchase(
-      db,
-      user.id,
-      amountInput
-    );
-
-    try {
-      const invoice = await createBlupalInvoice(
-        env,
-        purchase.rialAmount
+    /*
+     * ایجاد Purchase در دیتابیس
+     */
+    const purchase =
+      await createPurchase(
+        db,
+        user.id,
+        amountInput
       );
 
+    try {
+      /*
+       * ساخت فاکتور در Blupal
+       *
+       * final_amount در همین پاسخ مشخص می‌شود.
+       * این همان مبلغ دقیق موردنیاز برای پرداخت است.
+       */
+      const invoice =
+        await createBlupalInvoice(
+          env,
+          purchase.rialAmount
+        );
+
+      if (
+        !invoice?.invoice_id ||
+        !Number.isInteger(
+          Number(invoice.final_amount)
+        )
+      ) {
+        throw new Error(
+          'Invalid Blupal invoice response.'
+        );
+      }
+
+      /*
+       * ذخیره فاکتور در D1
+       */
       await attachBlupalInvoice(
         db,
         purchase.id,
         invoice
       );
 
-      const baseToman = Math.floor(invoice.amount / 10);
-      const finalToman = Math.floor(invoice.final_amount / 10);
+      /*
+       * ساخت متن پرداخت
+       */
+      const paymentMessage =
+        buildPaymentMessage({
+          baseAmountRial:
+            Number(invoice.amount),
 
-      const expiresText = invoice.expires_at
-        ? `\n⏳ اعتبار فاکتور: <b>${escapeHtml(invoice.expires_at)}</b>`
-        : '';
+          finalAmountRial:
+            Number(invoice.final_amount),
 
+          expiresAt:
+            invoice.expires_at,
+        });
+
+      /*
+       * ساخت دکمه‌های Copy
+       */
+      const paymentKeyboard =
+        buildPaymentKeyboard(
+          Number(invoice.final_amount)
+        );
+
+      /*
+       * ارسال مستقیم فاکتور داخل Telegram
+       *
+       * دیگر payment_link به کاربر نمایش داده نمی‌شود.
+       */
       return await sendMessage(
         botToken,
         chatId,
-        `💳 <b>خرید مستقیم دوره</b>\n\n` +
-        `مبلغ دوره: <b>${baseToman.toLocaleString('fa-IR')}</b> تومان\n` +
-        `مبلغ نهایی پرداخت: <b>${finalToman.toLocaleString('fa-IR')}</b> تومان\n\n` +
-        `مبلغ نهایی را دقیقاً طبق فاکتور واریز کنید.` +
-        expiresText,
-        {
-          inline_keyboard: [
-            [
-              {
-                text: '💳 پرداخت / مشاهده فاکتور',
-                url: invoice.payment_link,
-              },
-            ],
-          ],
-        }
+        paymentMessage,
+        paymentKeyboard
       );
+
     } catch (invoiceError) {
-      await cancelWaitingPurchase(db, purchase.id);
+      /*
+       * اگر ساخت فاکتور شکست خورد،
+       * Purchase نیمه‌کاره نماند.
+       */
+      await cancelWaitingPurchase(
+        db,
+        purchase.id
+      );
+
       throw invoiceError;
     }
+
   } catch (error) {
     console.error(
       '❌ Direct course purchase error:',
@@ -430,177 +505,4 @@ async function startDirectCoursePurchase(message, env, db) {
       getCourseMenuKeyboard()
     );
   }
-}
-
-export default async function handleMessage(message, env, db) {
-  if (!message?.chat || !message?.from) {
-    return;
-  }
-
-  const botToken = env.TELEGRAM_BOT_TOKEN;
-  const chatId = message.chat.id;
-  const userId = message.from.id;
-  const text = message.text?.trim();
-
-  if (!botToken) {
-    console.error('❌ TELEGRAM_BOT_TOKEN missing');
-    return;
-  }
-
-  if (text === '/start' || text?.startsWith('/start ')) {
-    if (db) {
-      await clearUserState(db, userId);
-    }
-
-    return await showMainMenu(message, env);
-  }
-
-  if (text === COURSE_MENU_BUTTONS.BACK) {
-    if (db) {
-      try {
-        await clearUserState(db, userId);
-      } catch (error) {
-        console.error('❌ Failed to clear state:', error.message);
-      }
-    }
-
-    return await showMainMenu(message, env);
-  }
-
-  let userState = null;
-
-  if (db) {
-    try {
-      userState = await getUserState(db, userId);
-    } catch (error) {
-      console.error('❌ Failed to read user state:', error.message);
-      userState = null;
-    }
-  }
-
-  const currentState = userState?.state ?? null;
-  const currentData = userState?.data ?? {};
-
-  if (currentState === USER_STATES.WAITING_FOR_ADMIN_REJECTION_REASON) {
-    return await handleAdminRejectionReason(
-      message,
-      env,
-      db,
-      userState
-    );
-  }
-
-  const applicationStates = new Set([
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME,
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME,
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE,
-  ]);
-
-  if (applicationStates.has(currentState)) {
-    if (currentState === USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION) {
-      if (text === EARN_MONEY_BUTTONS.COURSE_PURCHASED) {
-        return await startAdminApplication(message, env, db);
-      }
-
-      return await sendMessage(
-        botToken,
-        chatId,
-        `لطفاً ابتدا گزینه <b>دوره را خریداری کرده‌ام</b> را انتخاب کنید.`,
-        getAdminApplicationStartKeyboard()
-      );
-    }
-
-    return await handleAdminApplication(
-      message,
-      env,
-      db,
-      currentState,
-      currentData
-    );
-  }
-
-  if (currentState === USER_STATES.WAITING_FOR_ADMIN_VERIFICATION) {
-    return await handleAdminVerificationInput(message, env, db);
-  }
-
-  if (text === MAIN_MENU_BUTTONS.BUY_COURSE) {
-    return await showCourseMenu(message, env);
-  }
-
-  if (text === COURSE_MENU_BUTTONS.VERIFY_ADMIN) {
-    return await startAdminVerification(message, env, db);
-  }
-
-  if (text === COURSE_MENU_BUTTONS.BUY_DIRECT) {
-    return await startDirectCoursePurchase(message, env, db);
-  }
-
-  if (text === MAIN_MENU_BUTTONS.EARN_MONEY) {
-    return await sendMessage(
-      botToken,
-      chatId,
-      `💰 <b>کسب درآمد با EndMark</b>\n\n` +
-      `اگر قصد دارید به عنوان ادمین با EndMark همکاری کنید، می‌توانید درخواست ثبت حساب ادمینی خود را ارسال کنید.\n\n` +
-      `برای ثبت درخواست، ابتدا باید دوره آموزشی را خریداری کرده باشید.\n\n` +
-      `پس از ارسال درخواست، اطلاعات شما توسط تیم EndMark بررسی خواهد شد.\n\n` +
-      `برای شروع، گزینه زیر را انتخاب کنید.`,
-      getEarnMoneyKeyboard()
-    );
-  }
-
-  if (text === EARN_MONEY_BUTTONS.APPLY_ADMIN) {
-    if (!db) {
-      return await sendMessage(
-        botToken,
-        chatId,
-        '❌ دیتابیس در دسترس نیست. ثبت درخواست فعلاً امکان‌پذیر نیست.',
-        getEarnMoneyKeyboard()
-      );
-    }
-
-    try {
-      await setUserState(
-        db,
-        userId,
-        USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
-        {}
-      );
-    } catch (error) {
-      console.error('❌ Failed to save application state:', error.message);
-
-      return await sendMessage(
-        botToken,
-        chatId,
-        '❌ در ذخیره وضعیت فرم مشکلی پیش آمد. لطفاً دوباره تلاش کنید.',
-        getEarnMoneyKeyboard()
-      );
-    }
-
-    return await sendMessage(
-      botToken,
-      chatId,
-      `📝 <b>ثبت درخواست حساب ادمینی</b>\n\n` +
-      `برای ثبت درخواست همکاری با EndMark، ابتدا باید دوره را خریداری کرده باشید.\n\n` +
-      `اگر دوره را خریداری کرده‌اید، گزینه زیر را انتخاب کنید.`,
-      getAdminApplicationStartKeyboard()
-    );
-  }
-
-  if (text === MAIN_MENU_BUTTONS.SUPPORT) {
-    return await sendMessage(
-      botToken,
-      chatId,
-      `❓ <b>راهنما و پشتیبانی</b>\n\n` +
-      `برای دریافت راهنمایی و پشتیبانی، با تیم EndMark در ارتباط باشید.`,
-      getMainMenuKeyboard()
-    );
-  }
-
-  return await sendMessage(
-    botToken,
-    chatId,
-    'لطفاً یکی از گزینه‌های موجود در منو را انتخاب کنید.',
-    getMainMenuKeyboard()
-  );
 }
