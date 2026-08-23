@@ -87,6 +87,7 @@ function extractUsername(text) {
   return null;
 }
 
+
 function extractTelegramId(text) {
   if (!text) {
     return null;
@@ -101,6 +102,7 @@ function extractTelegramId(text) {
   return null;
 }
 
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -109,6 +111,7 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
 
 async function showMainMenu(message, env) {
   const firstName = escapeHtml(
@@ -125,6 +128,7 @@ async function showMainMenu(message, env) {
   );
 }
 
+
 async function showCourseMenu(message, env) {
   return await sendMessage(
     env.TELEGRAM_BOT_TOKEN,
@@ -137,7 +141,12 @@ async function showCourseMenu(message, env) {
   );
 }
 
-async function startAdminVerification(message, env, db) {
+
+async function startAdminVerification(
+  message,
+  env,
+  db
+) {
   if (!db) {
     return await sendMessage(
       env.TELEGRAM_BOT_TOKEN,
@@ -179,7 +188,12 @@ async function startAdminVerification(message, env, db) {
   );
 }
 
-async function handleAdminVerificationInput(message, env, db) {
+
+async function handleAdminVerificationInput(
+  message,
+  env,
+  db
+) {
   const botToken = env.TELEGRAM_BOT_TOKEN;
   const chatId = message.chat.id;
   const userId = message.from.id;
@@ -196,18 +210,28 @@ async function handleAdminVerificationInput(message, env, db) {
 
   if (text === COURSE_MENU_BUTTONS.BACK) {
     await clearUserState(db, userId);
-    return await showMainMenu(message, env);
+
+    return await showMainMenu(
+      message,
+      env
+    );
   }
 
   if (message.forward_origin) {
     const origin = message.forward_origin;
 
-    if (origin.type === 'user' && origin.sender_user) {
-      const originalUserId = origin.sender_user.id;
-      const admin = await checkAdminValidityByTelegramId(
-        db,
-        originalUserId
-      );
+    if (
+      origin.type === 'user' &&
+      origin.sender_user
+    ) {
+      const originalUserId =
+        origin.sender_user.id;
+
+      const admin =
+        await checkAdminValidityByTelegramId(
+          db,
+          originalUserId
+        );
 
       if (admin) {
         return await sendMessage(
@@ -241,10 +265,15 @@ async function handleAdminVerificationInput(message, env, db) {
     );
   }
 
-  const telegramId = extractTelegramId(text);
+  const telegramId =
+    extractTelegramId(text);
 
   if (telegramId) {
-    const admin = await checkAdminValidityByTelegramId(db, telegramId);
+    const admin =
+      await checkAdminValidityByTelegramId(
+        db,
+        telegramId
+      );
 
     if (admin) {
       return await sendMessage(
@@ -267,10 +296,15 @@ async function handleAdminVerificationInput(message, env, db) {
     );
   }
 
-  const username = extractUsername(text);
+  const username =
+    extractUsername(text);
 
   if (username) {
-    const admin = await checkAdminValidity(db, username);
+    const admin =
+      await checkAdminValidity(
+        db,
+        username
+      );
 
     if (admin) {
       return await sendMessage(
@@ -304,6 +338,7 @@ async function handleAdminVerificationInput(message, env, db) {
     getAdminVerificationKeyboard()
   );
 }
+
 
 async function startDirectCoursePurchase(
   message,
@@ -342,7 +377,7 @@ async function startDirectCoursePurchase(
     }
 
     /*
-     * قبلاً خرید کرده؟
+     * بررسی خرید تأییدشده
      */
     const approvedPurchase =
       await getApprovedPurchase(
@@ -360,7 +395,7 @@ async function startDirectCoursePurchase(
     }
 
     /*
-     * فاکتور Pending قبلی
+     * بررسی فاکتور Pending قبلی
      */
     const pendingPurchase =
       await getPendingBlupalPurchase(
@@ -406,7 +441,7 @@ async function startDirectCoursePurchase(
     }
 
     /*
-     * ایجاد خرید جدید
+     * ایجاد Purchase جدید
      */
     const purchase =
       await createPurchase(
@@ -417,7 +452,7 @@ async function startDirectCoursePurchase(
 
     try {
       /*
-       * ساخت فاکتور Blupal
+       * ساخت فاکتور در Blupal
        */
       const invoice =
         await createBlupalInvoice(
@@ -426,7 +461,7 @@ async function startDirectCoursePurchase(
         );
 
       /*
-       * ذخیره فاکتور
+       * ذخیره اطلاعات فاکتور
        */
       await attachBlupalInvoice(
         db,
@@ -435,7 +470,7 @@ async function startDirectCoursePurchase(
       );
 
       /*
-       * ساخت پیام پرداخت داخل Telegram
+       * ساخت پیام پرداخت
        */
       const paymentMessage =
         buildPaymentMessage({
@@ -451,7 +486,7 @@ async function startDirectCoursePurchase(
         });
 
       /*
-       * دکمه‌های کپی
+       * ساخت کیبورد پرداخت
        */
       const paymentKeyboard =
         buildPaymentKeyboard(
@@ -459,7 +494,7 @@ async function startDirectCoursePurchase(
         );
 
       /*
-       * ارسال مستقیم فاکتور
+       * ارسال مستقیم فاکتور داخل تلگرام
        */
       return await sendMessage(
         botToken,
@@ -492,4 +527,319 @@ async function startDirectCoursePurchase(
       getCourseMenuKeyboard()
     );
   }
+}
+
+
+export default async function handleMessage(
+  message,
+  env,
+  db
+) {
+  if (!message?.chat || !message?.from) {
+    return;
+  }
+
+  const botToken =
+    env.TELEGRAM_BOT_TOKEN;
+
+  const chatId =
+    message.chat.id;
+
+  const userId =
+    message.from.id;
+
+  const text =
+    message.text?.trim();
+
+  if (!botToken) {
+    console.error(
+      '❌ TELEGRAM_BOT_TOKEN missing'
+    );
+
+    return;
+  }
+
+  /*
+   * /start
+   */
+  if (
+    text === '/start' ||
+    text?.startsWith('/start ')
+  ) {
+    if (db) {
+      await clearUserState(
+        db,
+        userId
+      );
+    }
+
+    return await showMainMenu(
+      message,
+      env
+    );
+  }
+
+  /*
+   * Back
+   */
+  if (
+    text === COURSE_MENU_BUTTONS.BACK
+  ) {
+    if (db) {
+      try {
+        await clearUserState(
+          db,
+          userId
+        );
+      } catch (error) {
+        console.error(
+          '❌ Failed to clear state:',
+          error.message
+        );
+      }
+    }
+
+    return await showMainMenu(
+      message,
+      env
+    );
+  }
+
+  /*
+   * User state
+   */
+  let userState = null;
+
+  if (db) {
+    try {
+      userState =
+        await getUserState(
+          db,
+          userId
+        );
+    } catch (error) {
+      console.error(
+        '❌ Failed to read user state:',
+        error.message
+      );
+
+      userState = null;
+    }
+  }
+
+  const currentState =
+    userState?.state ?? null;
+
+  const currentData =
+    userState?.data ?? {};
+
+  /*
+   * Admin rejection reason
+   */
+  if (
+    currentState ===
+    USER_STATES.WAITING_FOR_ADMIN_REJECTION_REASON
+  ) {
+    return await handleAdminRejectionReason(
+      message,
+      env,
+      db,
+      userState
+    );
+  }
+
+  /*
+   * Admin application states
+   */
+  const applicationStates =
+    new Set([
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME,
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME,
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE,
+    ]);
+
+  if (
+    applicationStates.has(
+      currentState
+    )
+  ) {
+    if (
+      currentState ===
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION
+    ) {
+      if (
+        text ===
+        EARN_MONEY_BUTTONS.COURSE_PURCHASED
+      ) {
+        return await startAdminApplication(
+          message,
+          env,
+          db
+        );
+      }
+
+      return await sendMessage(
+        botToken,
+        chatId,
+        `لطفاً ابتدا گزینه <b>دوره را خریداری کرده‌ام</b> را انتخاب کنید.`,
+        getAdminApplicationStartKeyboard()
+      );
+    }
+
+    return await handleAdminApplication(
+      message,
+      env,
+      db,
+      currentState,
+      currentData
+    );
+  }
+
+  /*
+   * Admin verification
+   */
+  if (
+    currentState ===
+    USER_STATES.WAITING_FOR_ADMIN_VERIFICATION
+  ) {
+    return await handleAdminVerificationInput(
+      message,
+      env,
+      db
+    );
+  }
+
+  /*
+   * Buy course
+   */
+  if (
+    text ===
+    MAIN_MENU_BUTTONS.BUY_COURSE
+  ) {
+    return await showCourseMenu(
+      message,
+      env
+    );
+  }
+
+  /*
+   * Verify admin
+   */
+  if (
+    text ===
+    COURSE_MENU_BUTTONS.VERIFY_ADMIN
+  ) {
+    return await startAdminVerification(
+      message,
+      env,
+      db
+    );
+  }
+
+  /*
+   * Direct course purchase
+   */
+  if (
+    text ===
+    COURSE_MENU_BUTTONS.BUY_DIRECT
+  ) {
+    return await startDirectCoursePurchase(
+      message,
+      env,
+      db
+    );
+  }
+
+  /*
+   * Earn money
+   */
+  if (
+    text ===
+    MAIN_MENU_BUTTONS.EARN_MONEY
+  ) {
+    return await sendMessage(
+      botToken,
+      chatId,
+      `💰 <b>کسب درآمد با EndMark</b>\n\n` +
+      `اگر قصد دارید به عنوان ادمین با EndMark همکاری کنید، می‌توانید درخواست ثبت حساب ادمینی خود را ارسال کنید.\n\n` +
+      `برای ثبت درخواست همکاری، ابتدا باید دوره آموزشی را خریداری کرده باشید.\n\n` +
+      `پس از ارسال درخواست، اطلاعات شما توسط تیم EndMark بررسی خواهد شد.\n\n` +
+      `برای شروع، گزینه زیر را انتخاب کنید.`,
+      getEarnMoneyKeyboard()
+    );
+  }
+
+  /*
+   * Apply admin
+   */
+  if (
+    text ===
+    EARN_MONEY_BUTTONS.APPLY_ADMIN
+  ) {
+    if (!db) {
+      return await sendMessage(
+        botToken,
+        chatId,
+        '❌ دیتابیس در دسترس نیست. ثبت درخواست فعلاً امکان‌پذیر نیست.',
+        getEarnMoneyKeyboard()
+      );
+    }
+
+    try {
+      await setUserState(
+        db,
+        userId,
+        USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
+        {}
+      );
+    } catch (error) {
+      console.error(
+        '❌ Failed to save application state:',
+        error.message
+      );
+
+      return await sendMessage(
+        botToken,
+        chatId,
+        '❌ در ذخیره وضعیت فرم مشکلی پیش آمد. لطفاً دوباره تلاش کنید.',
+        getEarnMoneyKeyboard()
+      );
+    }
+
+    return await sendMessage(
+      botToken,
+      chatId,
+      `📝 <b>ثبت درخواست حساب ادمینی</b>\n\n` +
+      `برای ثبت درخواست همکاری با EndMark، ابتدا باید دوره را خریداری کرده باشید.\n\n` +
+      `اگر دوره را خریداری کرده‌اید، گزینه زیر را انتخاب کنید.`,
+      getAdminApplicationStartKeyboard()
+    );
+  }
+
+  /*
+   * Support
+   */
+  if (
+    text ===
+    MAIN_MENU_BUTTONS.SUPPORT
+  ) {
+    return await sendMessage(
+      botToken,
+      chatId,
+      `❓ <b>راهنما و پشتیبانی</b>\n\n` +
+      `برای دریافت راهنمایی و پشتیبانی، با تیم EndMark در ارتباط باشید.`,
+      getMainMenuKeyboard()
+    );
+  }
+
+  /*
+   * Unknown input
+   */
+  return await sendMessage(
+    botToken,
+    chatId,
+    'لطفاً یکی از گزینه‌های موجود در منو را انتخاب کنید.',
+    getMainMenuKeyboard()
+  );
 }
