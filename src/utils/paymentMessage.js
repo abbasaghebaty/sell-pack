@@ -63,21 +63,30 @@ export function formatTomanCompact(rialAmount) {
 /**
  * ساخت کیبورد پرداخت
  *
- * Telegram copy_text را مستقیماً در Clipboard
- * کاربر قرار می‌دهد.
+ * دکمه مالک حساب نیز شماره کارت را کپی می‌کند.
  */
-export function buildPaymentKeyboard(finalAmountRial) {
+export function buildPaymentKeyboard(
+  finalAmountRial
+) {
   const cardNumber =
-    String(PAYMENT_CONFIG.CARD_NUMBER || '').trim();
+    String(
+      PAYMENT_CONFIG.CARD_NUMBER || ''
+    ).trim();
 
   const cardHolder =
-    String(PAYMENT_CONFIG.CARD_HOLDER || '').trim();
+    String(
+      PAYMENT_CONFIG.CARD_HOLDER || ''
+    ).trim();
 
   const exactAmountRial =
-    Math.trunc(Number(finalAmountRial));
+    Math.trunc(
+      Number(finalAmountRial)
+    );
 
   const compactAmount =
-    formatTomanCompact(finalAmountRial);
+    formatTomanCompact(
+      finalAmountRial
+    );
 
   if (
     !cardNumber ||
@@ -99,10 +108,11 @@ export function buildPaymentKeyboard(finalAmountRial) {
             text: cardNumber,
           },
         },
+
         {
           text: `👤 ${cardHolder}`,
           copy_text: {
-            text: cardHolder,
+            text: cardNumber,
           },
         },
       ],
@@ -111,13 +121,18 @@ export function buildPaymentKeyboard(finalAmountRial) {
         {
           text: '📋 کپی مبلغ',
           copy_text: {
-            text: String(exactAmountRial),
+            text: String(
+              exactAmountRial
+            ),
           },
         },
+
         {
           text: compactAmount,
           copy_text: {
-            text: String(exactAmountRial),
+            text: String(
+              exactAmountRial
+            ),
           },
         },
       ],
@@ -151,39 +166,38 @@ export function buildPaymentMessage({
     );
   }
 
-  if (finalAmount < baseAmount) {
+  if (
+    finalAmount < baseAmount
+  ) {
     throw new Error(
       'Final payment amount cannot be lower than base amount.'
     );
   }
 
-  const baseToman =
-    rialToToman(baseAmount);
-
-  const finalToman =
-    rialToToman(finalAmount);
-
-  const extraToman =
-    finalToman - baseToman;
-
   const baseCompact =
-    formatTomanCompact(baseAmount);
-
-  const extraCompact =
     formatTomanCompact(
-      extraToman * 10
+      baseAmount
     );
 
   const finalCompact =
-    formatTomanCompact(finalAmount);
+    formatTomanCompact(
+      finalAmount
+    );
 
   const cardNumber =
-    String(PAYMENT_CONFIG.CARD_NUMBER || '').trim();
+    String(
+      PAYMENT_CONFIG.CARD_NUMBER || ''
+    ).trim();
 
   const cardHolder =
-    String(PAYMENT_CONFIG.CARD_HOLDER || '').trim();
+    String(
+      PAYMENT_CONFIG.CARD_HOLDER || ''
+    ).trim();
 
-  if (!cardNumber || !cardHolder) {
+  if (
+    !cardNumber ||
+    !cardHolder
+  ) {
     throw new Error(
       'Payment card configuration is missing.'
     );
@@ -200,7 +214,6 @@ export function buildPaymentMessage({
     `💳 <b>خرید مستقیم دوره</b>\n\n` +
 
     `مبلغ دوره: <b>${baseCompact}</b>\n` +
-    `هزینه و کارمزد: <b>${extraCompact}</b>\n` +
     `مبلغ نهایی پرداخت: <b>${finalCompact}</b>\n\n` +
 
     `🏦 <b>اطلاعات پرداخت</b>\n\n` +
@@ -211,13 +224,23 @@ export function buildPaymentMessage({
     `مالک حساب:\n` +
     `<b>${escapeHtml(cardHolder)}</b>\n\n` +
 
-    `مبلغ نهایی را دقیقاً طبق همین فاکتور واریز کنید.` +
+    `❌ <b>مبلغ نهایی را دقیقاً عین همین مبلغ واریز کنید. ❌</b>\n\n` +
+
+    `<blockquote expandable>` +
+    `<b>نکته مهم پرداخت</b>\n\n` +
+    `مبلغ انتقالی باید دقیقاً با مبلغ نهایی فاکتور یکسان باشد.\n` +
+    `حتی اختلاف چند ریال هم ممکن است باعث شود پرداخت شما به‌صورت خودکار شناسایی نشود و خریدتان فعال نشود.\n\n` +
+    `قبل از تأیید انتقال، مبلغ را دوباره بررسی کنید و فقط همان مبلغ درج‌شده در فاکتور را واریز کنید.` +
+    `</blockquote>` +
 
     expiresText
   );
 }
 
 
+/**
+ * Telegram HTML escape
+ */
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
