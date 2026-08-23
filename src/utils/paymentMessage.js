@@ -63,7 +63,13 @@ export function formatTomanCompact(rialAmount) {
 /**
  * ساخت کیبورد پرداخت
  *
- * دکمه مالک حساب نیز شماره کارت را کپی می‌کند.
+ * دکمه اول:
+ * نام مالک حساب را نشان می‌دهد
+ * ولی شماره کارت را کپی می‌کند.
+ *
+ * دکمه دوم:
+ * مبلغ را به صورت T نشان می‌دهد
+ * ولی مبلغ دقیق ریالی را کپی می‌کند.
  */
 export function buildPaymentKeyboard(
   finalAmountRial
@@ -99,46 +105,24 @@ export function buildPaymentKeyboard(
     );
   }
 
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: '📋 کپی شماره کارت',
-          copy_text: {
-            text: cardNumber,
-          },
+return {
+  inline_keyboard: [
+    [
+      {
+        text: compactAmount,
+        copy_text: {
+          text: String(exactAmountRial),
         },
-
-        {
-          text: `👤 ${cardHolder}`,
-          copy_text: {
-            text: cardNumber,
-          },
+      },
+      {
+        text: `👤 ${cardHolder}`,
+        copy_text: {
+          text: cardNumber,
         },
-      ],
-
-      [
-        {
-          text: '📋 کپی مبلغ',
-          copy_text: {
-            text: String(
-              exactAmountRial
-            ),
-          },
-        },
-
-        {
-          text: compactAmount,
-          copy_text: {
-            text: String(
-              exactAmountRial
-            ),
-          },
-        },
-      ],
+      },
     ],
-  };
-}
+  ],
+};
 
 
 /**
@@ -224,7 +208,7 @@ export function buildPaymentMessage({
     `مالک حساب:\n` +
     `<b>${escapeHtml(cardHolder)}</b>\n\n` +
 
-    `❌ <b>مبلغ نهایی را دقیقاً عین همین مبلغ واریز کنید. ❌</b>\n\n` +
+    `❌ <b>مبلغ نهایی را دقیقاً عین همین مبلغ واریز کنید.</b>\n\n` +
 
     `<blockquote expandable>` +
     `<b>نکته مهم پرداخت</b>\n\n` +
