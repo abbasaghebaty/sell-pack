@@ -39,10 +39,7 @@ export async function getActivePurchaseByTelegramId(db, telegramId) {
       u.last_name
     FROM course_purchases cp
     INNER JOIN users u ON u.id = cp.user_id
-    INNER JOIN course_buyers cb ON cb.telegram_id = u.telegram_id
     WHERE u.telegram_id = ?
-      AND cb.is_active = 1
-      AND (cb.expires_at IS NULL OR cb.expires_at > CURRENT_TIMESTAMP)
       AND cp.status = 'approved'
       AND COALESCE(cp.access_status, 'active') = 'active'
       AND (cp.expires_at IS NULL OR cp.expires_at > CURRENT_TIMESTAMP)
@@ -83,36 +80,51 @@ export async function getPendingBlupalPurchase(db, userId) {
 
 /**
  * planOrLegacy:
- * - subscription plan object: { code, durationDays, priceRial, priceToman }
- * - integer: legacy amount input kept for backward compatibility.
+ * - subscription plan object: { code, title, durationDays, priceToman, priceRial }
+ * - integer is preserved only for legacy callers.
  */
 export async function createPurchase(db, userId, planOrLegacy) {
-  let coursePlan = null;
+  let planCode = null;
   let durationDays = null;
   let rialAmount = null;
-  let amountInput = null;
   let tomanAmount = null;
 
   if (typeof planOrLegacy === 'object' && planOrLegacy) {
-    coursePlan = planOrLegacy.code ?? null;
+    planCode = String(planOrLegacy.code ?? '').trim() || null;
     durationDays = planOrLegacy.durationDays ?? null;
-    rialAmount = Number(planOrLegacy.priceRial);
     tomanAmount = Number(planOrLegacy.priceToman);
-    amountInput = Math.floor(tomanAmount / 10_000);
+    rialAmount = Number(planOrLegacy.priceRial);
+
+    if (!planCode) {
+      throw new Error('Course plan code is missing.');
+    }
+
+    if (durationDays !== null && !Number.isInteger(Number(durationDays))) {
+      throw new Error(`Invalid course duration: ${durationDays}`);
+    }
+
+    if (durationDays !== null) {
+      durationDays = Number(durationDays);
+    }
   } else {
-    amountInput = Number(planOrLegacy);
+    const amountInput = Number(planOrLegacy);
 
     if (!Number.isInteger(amountInput) || amountInput <= 0) {
-      throw new Error(`Invalid amount input: ${planOrLegacy}`);
+      throw new Error(`Invalid legacy amount input: ${planOrLegacy}`);
     }
 
     tomanAmount = amountInput * 10_000;
     rialAmount = tomanAmount * 10;
-    coursePlan = 'legacy';
+    planCode = 'legacy';
+    durationDays = null;
+  }
+
+  if (!Number.isInteger(tomanAmount) || tomanAmount <= 0) {
+    throw new Error(`Invalid Toman amount: ${tomanAmount}`);
   }
 
   if (!Number.isInteger(rialAmount) || rialAmount <= 0) {
-    throw new Error(`Invalid purchase amount: ${rialAmount}`);
+    throw new Error(`Invalid Rial amount: ${rialAmount}`);
   }
 
   const result = await db.prepare(`
@@ -128,7 +140,7 @@ export async function createPurchase(db, userId, planOrLegacy) {
   `).bind(
     userId,
     rialAmount,
-    coursePlan,
+    planCode,
     durationDays,
   ).run();
 
@@ -139,19 +151,33 @@ export async function createPurchase(db, userId, planOrLegacy) {
 
   return {
     id: purchaseId,
-    amountInput,
+    amountInput: Math.floor(tomanAmount / 10_000),
     tomanAmount,
     rialAmount,
-    coursePlan,
+    planCode,
     durationDays,
   };
 }
 
 export async function attachBlupalInvoice(db, purchaseId, invoice) {
-  if (!purchaseId) throw new Error('Purchase ID is required.');
-  if (!invoice?.invoice_id) throw new Error('Blupal invoice ID is missing.');
-  if (!Number.isInteger(Number(invoice.amount))) throw new Error('Blupal invoice amount is missing.');
-  if (!Number.isInteger(Number(invoice.final_amount))) throw new Error('Blupal final amount is missing.');
+  if (!purchaseId) {
+    throw new Error('Purchase ID is required.');
+  }
+
+  if (!invoice?.invoice_id) {
+    throw new Error('Blupal invoice ID is missing.');
+  }
+
+  const amount = Number(invoice.amount);
+  const finalAmount = Number(invoice.final_amount);
+
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new Error('Blupal invoice amount is missing.');
+  }
+
+  if (!Number.isInteger(finalAmount) || finalAmount <= 0) {
+    throw new Error('Blupal final amount is missing.');
+  }
 
   const result = await db.prepare(`
     UPDATE course_purchases
@@ -165,7 +191,7 @@ export async function attachBlupalInvoice(db, purchaseId, invoice) {
     WHERE id = ?
   `).bind(
     Number(invoice.invoice_id),
-    Number(invoice.final_amount),
+    finalAmount,
     invoice.payment_link ?? null,
     invoice.expires_at ?? null,
     invoice.mode ?? null,
@@ -189,21 +215,24 @@ export async function cancelWaitingPurchase(db, purchaseId) {
   `).bind(purchaseId).run();
 }
 
-export async function approveBlupalPurchase(db, invoiceId, transactionId, finalAmount, mode) {
-  const purchase = await db.prepare(`
-    SELECT
-      cp.*,
-      u.telegram_id
-    FROM course_purchases cp
-    INNER JOIN users u ON u.id = cp.user_id
-    WHERE cp.blupal_invoice_id = ?
-    LIMIT 1
-  `).bind(invoiceId).first();
+export async function approveBlupalPurchase(
+  db,
+  invoiceId,
+  transactionId,
+  finalAmount,
+  mode,
+) {
+  const purchase = await findPurchaseByInvoiceId(db, invoiceId);
 
-  if (!purchase) return null;
-  if (purchase.status === 'approved') return purchase;
+  if (!purchase) {
+    return null;
+  }
 
-  await db.prepare(`
+  if (purchase.status === 'approved') {
+    return purchase;
+  }
+
+  const result = await db.prepare(`
     UPDATE course_purchases
     SET
       status = 'approved',
@@ -222,31 +251,14 @@ export async function approveBlupalPurchase(db, invoiceId, transactionId, finalA
     purchase.id,
   ).run();
 
-  return db.prepare(`
-    SELECT
-      cp.*,
-      u.telegram_id,
-      u.username,
-      u.first_name,
-      u.last_name
-    FROM course_purchases cp
-    INNER JOIN users u ON u.id = cp.user_id
-    WHERE cp.id = ?
-    LIMIT 1
-  `).bind(purchase.id).first();
+  if (!result?.meta?.changes) {
+    throw new Error(`Failed to approve purchase ${purchase.id}.`);
+  }
+
+  return findPurchaseById(db, purchase.id);
 }
 
 export async function setPurchaseActivation(db, purchaseId, expiresAt) {
-  const purchase = await db.prepare(`
-    SELECT cp.*, u.telegram_id
-    FROM course_purchases cp
-    INNER JOIN users u ON u.id = cp.user_id
-    WHERE cp.id = ?
-    LIMIT 1
-  `).bind(purchaseId).first();
-
-  if (!purchase) throw new Error(`Purchase ${purchaseId} not found.`);
-
   await db.prepare(`
     UPDATE course_purchases
     SET
@@ -255,6 +267,16 @@ export async function setPurchaseActivation(db, purchaseId, expiresAt) {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).bind(expiresAt ?? null, purchaseId).run();
+}
+
+export async function upsertCourseBuyer(
+  db,
+  telegramId,
+  accessType,
+  purchasedAt,
+  expiresAt,
+) {
+  const safePurchasedAt = purchasedAt || new Date().toISOString();
 
   await db.prepare(`
     INSERT INTO course_buyers (
@@ -264,39 +286,55 @@ export async function setPurchaseActivation(db, purchaseId, expiresAt) {
       expires_at,
       is_active
     )
-    VALUES (?, ?, CURRENT_TIMESTAMP, ?, 1)
+    VALUES (?, ?, ?, ?, 1)
     ON CONFLICT(telegram_id) DO UPDATE SET
       access_type = excluded.access_type,
       purchased_at = excluded.purchased_at,
       expires_at = excluded.expires_at,
       is_active = 1
   `).bind(
-    purchase.telegram_id,
-    purchase.course_plan ?? 'legacy',
+    telegramId,
+    accessType,
+    safePurchasedAt,
     expiresAt ?? null,
   ).run();
 }
 
-export async function savePurchaseInviteLink(db, purchaseId, inviteLink, inviteLinkExpiresAt) {
+export async function deactivateCourseBuyer(db, telegramId) {
+  await db.prepare(`
+    UPDATE course_buyers
+    SET is_active = 0
+    WHERE telegram_id = ?
+  `).bind(telegramId).run();
+}
+
+export async function getActiveCourseBuyer(db, telegramId) {
+  return db.prepare(`
+    SELECT *
+    FROM course_buyers
+    WHERE telegram_id = ?
+      AND is_active = 1
+      AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+    LIMIT 1
+  `).bind(telegramId).first();
+}
+
+export async function savePurchaseInviteLink(
+  db,
+  purchaseId,
+  inviteLink,
+  inviteLinkExpiresAt,
+) {
   await db.prepare(`
     UPDATE course_purchases
     SET
       invite_link = ?,
       invite_link_created_at = CURRENT_TIMESTAMP,
-      invite_link_used_at = NULL,
+      invite_link_expires_at = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).bind(
     inviteLink ?? null,
-    purchaseId,
-  ).run();
-
-  // invite_link_expires_at is added by the small follow-up migration.
-  await db.prepare(`
-    UPDATE course_purchases
-    SET invite_link_expires_at = ?
-    WHERE id = ?
-  `).bind(
     inviteLinkExpiresAt ?? null,
     purchaseId,
   ).run();
@@ -307,7 +345,6 @@ export async function markPurchaseJoined(db, purchaseId) {
     UPDATE course_purchases
     SET
       channel_joined_at = CURRENT_TIMESTAMP,
-      invite_link_used_at = CURRENT_TIMESTAMP,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).bind(purchaseId).run();
@@ -318,22 +355,15 @@ export async function clearPurchaseInviteLink(db, purchaseId) {
     UPDATE course_purchases
     SET
       invite_link = NULL,
-      invite_link_used_at = COALESCE(invite_link_used_at, CURRENT_TIMESTAMP),
+      invite_link_expires_at = NULL,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).bind(purchaseId).run();
 }
 
 export async function markPurchaseExpired(db, purchaseId) {
-  const purchase = await db.prepare(`
-    SELECT cp.*, u.telegram_id
-    FROM course_purchases cp
-    INNER JOIN users u ON u.id = cp.user_id
-    WHERE cp.id = ?
-    LIMIT 1
-  `).bind(purchaseId).first();
-
-  if (!purchase) return;
+  const purchase = await findPurchaseById(db, purchaseId);
+  if (!purchase) return null;
 
   await db.prepare(`
     UPDATE course_purchases
@@ -341,19 +371,18 @@ export async function markPurchaseExpired(db, purchaseId) {
       status = 'expired',
       access_status = 'expired',
       invite_link = NULL,
+      invite_link_expires_at = NULL,
       channel_removed_at = CURRENT_TIMESTAMP,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
       AND status = 'approved'
   `).bind(purchaseId).run();
 
-  await db.prepare(`
-    UPDATE course_buyers
-    SET is_active = 0
-    WHERE telegram_id = ?
-      AND expires_at IS NOT NULL
-      AND expires_at <= CURRENT_TIMESTAMP
-  `).bind(purchase.telegram_id).run();
+  if (purchase.telegram_id) {
+    await deactivateCourseBuyer(db, purchase.telegram_id);
+  }
+
+  return findPurchaseById(db, purchaseId);
 }
 
 export async function getExpiredPurchases(db) {
@@ -376,30 +405,19 @@ export async function getExpiredPurchases(db) {
   return result?.results ?? [];
 }
 
-export async function getActivePurchasesWithoutInviteLink(db) {
-  const result = await db.prepare(`
+export async function findPurchaseById(db, purchaseId) {
+  return db.prepare(`
     SELECT
       cp.*,
       u.telegram_id,
+      u.username,
       u.first_name,
-      u.username
+      u.last_name
     FROM course_purchases cp
     INNER JOIN users u ON u.id = cp.user_id
-    WHERE cp.status = 'approved'
-      AND COALESCE(cp.access_status, 'active') = 'active'
-      AND (cp.expires_at IS NULL OR cp.expires_at > CURRENT_TIMESTAMP)
-      AND (
-        cp.invite_link IS NULL
-        OR cp.invite_link = ''
-        OR cp.invite_link_expires_at IS NULL
-        OR cp.invite_link_expires_at <= CURRENT_TIMESTAMP
-      )
-      AND cp.channel_joined_at IS NULL
-    ORDER BY cp.id ASC
-    LIMIT 100
-  `).all();
-
-  return result?.results ?? [];
+    WHERE cp.id = ?
+    LIMIT 1
+  `).bind(purchaseId).first();
 }
 
 export async function findPurchaseByInvoiceId(db, invoiceId) {
