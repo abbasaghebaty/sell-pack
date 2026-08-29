@@ -1,9 +1,5 @@
-/**
- * Telegram API Helper
- */
-
 const TELEGRAM_API = 'https://api.telegram.org';
-const REQUEST_TIMEOUT = 10000;
+const REQUEST_TIMEOUT = 15_000;
 
 async function telegramRequest(botToken, method, payload = {}) {
   if (typeof botToken !== 'string' || !botToken.trim()) {
@@ -21,29 +17,25 @@ async function telegramRequest(botToken, method, payload = {}) {
       signal: controller.signal,
     });
 
-    const responseText = await response.text();
+    const text = await response.text();
     let result;
 
     try {
-      result = JSON.parse(responseText);
+      result = text ? JSON.parse(text) : {};
     } catch {
       throw new Error(`Invalid Telegram response. HTTP ${response.status}`);
     }
 
-    if (!response.ok) {
+    if (!response.ok || !result?.ok) {
       throw new Error(
-        `Telegram HTTP ${response.status}: ${result?.description || 'Unknown error'}`
+        `Telegram ${method} failed: HTTP ${response.status}: ${result?.description || 'Unknown error'}`
       );
-    }
-
-    if (!result?.ok) {
-      throw new Error(`Telegram API error: ${result?.description || 'Unknown error'}`);
     }
 
     return result;
   } catch (error) {
     if (error?.name === 'AbortError') {
-      throw new Error('Telegram API request timed out');
+      throw new Error(`Telegram ${method} timed out.`);
     }
     throw error;
   } finally {
@@ -51,31 +43,38 @@ async function telegramRequest(botToken, method, payload = {}) {
   }
 }
 
-export async function sendMessage(botToken, chatId, text, replyMarkup = null) {
-  const payload = { chat_id: chatId, text, parse_mode: 'HTML' };
+export function sendMessage(botToken, chatId, text, replyMarkup = null) {
+  const payload = {
+    chat_id: chatId,
+    text,
+    parse_mode: 'HTML',
+  };
+
   if (replyMarkup) payload.reply_markup = replyMarkup;
   return telegramRequest(botToken, 'sendMessage', payload);
 }
 
-export async function answerCallbackQuery(botToken, callbackQueryId, text = null, showAlert = false) {
-  if (!callbackQueryId) throw new Error('Callback query ID is required');
-
+export function answerCallbackQuery(botToken, callbackQueryId, text = null, showAlert = false) {
   const payload = { callback_query_id: callbackQueryId };
-  if (typeof text === 'string' && text.trim()) {
+  if (text) {
     payload.text = text;
     payload.show_alert = Boolean(showAlert);
   }
-
   return telegramRequest(botToken, 'answerCallbackQuery', payload);
 }
 
-export async function editMessageText(botToken, chatId, messageId, text, replyMarkup = null) {
-  const payload = { chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML' };
+export function editMessageText(botToken, chatId, messageId, text, replyMarkup = null) {
+  const payload = {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    parse_mode: 'HTML',
+  };
   if (replyMarkup) payload.reply_markup = replyMarkup;
   return telegramRequest(botToken, 'editMessageText', payload);
 }
 
-export async function deleteMessage(botToken, chatId, messageId) {
+export function deleteMessage(botToken, chatId, messageId) {
   return telegramRequest(botToken, 'deleteMessage', {
     chat_id: chatId,
     message_id: messageId,
@@ -89,36 +88,42 @@ export async function createChatInviteLink(botToken, chatId, { name, expireDate 
     expire_date: expireDate,
     creates_join_request: true,
   });
-
   return result.result;
 }
 
-export async function revokeChatInviteLink(botToken, chatId, inviteLink) {
+export function revokeChatInviteLink(botToken, chatId, inviteLink) {
   return telegramRequest(botToken, 'revokeChatInviteLink', {
     chat_id: chatId,
     invite_link: inviteLink,
   });
 }
 
-export async function approveChatJoinRequest(botToken, chatId, userId) {
+export function approveChatJoinRequest(botToken, chatId, userId) {
   return telegramRequest(botToken, 'approveChatJoinRequest', {
     chat_id: chatId,
     user_id: userId,
   });
 }
 
-export async function declineChatJoinRequest(botToken, chatId, userId) {
+export function declineChatJoinRequest(botToken, chatId, userId) {
   return telegramRequest(botToken, 'declineChatJoinRequest', {
     chat_id: chatId,
     user_id: userId,
   });
 }
 
-export async function unbanChatMember(botToken, chatId, userId) {
+export function unbanChatMember(botToken, chatId, userId) {
   return telegramRequest(botToken, 'unbanChatMember', {
     chat_id: chatId,
     user_id: userId,
     only_if_banned: false,
+  });
+}
+
+export function getChatMember(botToken, chatId, userId) {
+  return telegramRequest(botToken, 'getChatMember', {
+    chat_id: chatId,
+    user_id: userId,
   });
 }
 
@@ -132,4 +137,5 @@ export default {
   approveChatJoinRequest,
   declineChatJoinRequest,
   unbanChatMember,
+  getChatMember,
 };

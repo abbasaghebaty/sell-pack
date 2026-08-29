@@ -1,532 +1,182 @@
 /**
  * Blupal API
  *
- * مسیر:
- * src/api/blupal.js
- *
- * مسئول:
- * - ساخت فاکتور
- * - دریافت وضعیت فاکتور
- * - مدیریت پاسخ‌های Blupal
+ * Base URL and contract verified against Blupal API documentation.
  */
 
 const BLUPAL_BASE_URL = 'https://blupal.net/api';
+const REQUEST_TIMEOUT = 15_000;
 
-const REQUEST_TIMEOUT = 15000;
-
-
-/**
- * دریافت API Key از Cloudflare Secret
- */
 function getApiKey(env) {
-  const apiKey =
-    env?.BLUPAL_API_KEY?.trim();
+  const apiKey = env?.BLUPAL_API_KEY?.trim();
 
   if (!apiKey) {
-    throw new Error(
-      'BLUPAL_API_KEY is missing. Add BLUPAL_API_KEY as a Cloudflare Worker Secret.'
-    );
+    throw new Error('BLUPAL_API_KEY is missing.');
   }
 
-  if (
-    !apiKey.startsWith('blu_test_') &&
-    !apiKey.startsWith('blu_live_')
-  ) {
-    throw new Error(
-      'BLUPAL_API_KEY has an invalid format. Expected blu_test_... or blu_live_...'
-    );
+  if (!apiKey.startsWith('blu_test_') && !apiKey.startsWith('blu_live_')) {
+    throw new Error('BLUPAL_API_KEY has an invalid format.');
   }
 
   return apiKey;
 }
 
-
-/**
- * تشخیص محیط از روی API Key
- */
 function getModeFromApiKey(apiKey) {
-  if (apiKey.startsWith('blu_test_')) {
-    return 'sandbox';
-  }
-
-  if (apiKey.startsWith('blu_live_')) {
-    return 'live';
-  }
-
+  if (apiKey.startsWith('blu_test_')) return 'sandbox';
+  if (apiKey.startsWith('blu_live_')) return 'live';
   return null;
 }
 
-
-/**
- * پارس امن پاسخ Blupal
- */
 async function parseResponse(response) {
-  const text =
-    await response.text();
-
-  let payload = {};
-
+  const text = await response.text();
   try {
-    payload =
-      text
-        ? JSON.parse(text)
-        : {};
+    return text ? JSON.parse(text) : {};
   } catch {
     throw new Error(
       `Blupal returned invalid JSON. HTTP ${response.status}. Response: ${text || '[empty]'}`
     );
   }
-
-  return payload;
 }
 
-
-/**
- * درخواست عمومی به Blupal
- */
-async function blupalRequest(
-  env,
-  method,
-  path,
-  body = null
-) {
-  const apiKey =
-    getApiKey(env);
-
-  const endpoint =
-    `${BLUPAL_BASE_URL}${path}`;
-
-  const controller =
-    new AbortController();
-
-  const timeoutId =
-    setTimeout(
-      () => controller.abort(),
-      REQUEST_TIMEOUT
-    );
+async function blupalRequest(env, method, path, body = null) {
+  const apiKey = getApiKey(env);
+  const endpoint = `${BLUPAL_BASE_URL}${path}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
   try {
     const headers = {
-      'X-API-Key': apiKey,
       Accept: 'application/json',
+      'X-API-Key': apiKey,
     };
 
     if (body !== null) {
-      headers['Content-Type'] =
-        'application/json';
+      headers['Content-Type'] = 'application/json';
     }
-
-    console.log(
-      'Blupal request:',
-      {
-        method,
-        endpoint,
-        mode: getModeFromApiKey(apiKey),
-      }
-    );
 
     let response;
 
     try {
-      response =
-        await fetch(
-          endpoint,
-          {
-            method,
-            headers,
-            body:
-              body === null
-                ? undefined
-                : JSON.stringify(body),
-            signal:
-              controller.signal,
-          }
-        );
+      response = await fetch(endpoint, {
+        method,
+        headers,
+        body: body === null ? undefined : JSON.stringify(body),
+        signal: controller.signal,
+      });
     } catch (error) {
-      if (
-        error?.name ===
-        'AbortError'
-      ) {
-        throw new Error(
-          `Blupal request timed out after ${REQUEST_TIMEOUT}ms`
-        );
+      if (error?.name === 'AbortError') {
+        throw new Error(`Blupal request timed out after ${REQUEST_TIMEOUT}ms.`);
       }
-
-      throw new Error(
-        `Blupal network request failed: ${
-          error?.message || error
-        }`
-      );
+      throw new Error(`Blupal network request failed: ${error?.message || error}`);
     }
 
-    const payload =
-      await parseResponse(
-        response
-      );
+    const payload = await parseResponse(response);
 
-    console.log(
-      'Blupal response:',
-      {
-        method,
-        endpoint,
-        httpStatus:
-          response.status,
-        payload,
-      }
-    );
+    console.log('Blupal API response:', {
+      method,
+      path,
+      status: response.status,
+      success: payload?.success,
+      error: payload?.error,
+      message: payload?.message,
+    });
 
     if (!response.ok) {
-      const apiError =
-        payload?.message ||
-        payload?.error ||
-        payload?.detail ||
-        `HTTP ${response.status}`;
-
       throw new Error(
-        `Blupal API error: ${apiError}`
+        `Blupal HTTP ${response.status}: ${payload?.message || payload?.error || 'Unknown error'}`
       );
     }
 
-    return {
-      payload,
-      status:
-        response.status,
-    };
-
+    return { payload, status: response.status };
   } finally {
-    clearTimeout(
-      timeoutId
-    );
+    clearTimeout(timeoutId);
   }
 }
 
+export async function createBlupalInvoice(env, rialAmount) {
+  const amount = Number(rialAmount);
 
-/**
- * ساخت فاکتور
- *
- * مبلغ ورودی:
- * ریال
- *
- * مثال:
- * 400000
- * =
- * 40,000 تومان
- */
-export async function createBlupalInvoice(
-  env,
-  rialAmount
-) {
-  const numericAmount =
-    Number(rialAmount);
+  if (!Number.isInteger(amount) || amount < 100_000 || amount > 500_000_000) {
+    throw new Error(`Invalid Blupal invoice amount: ${rialAmount} IRR.`);
+  }
 
-  if (
-    !Number.isInteger(
-      numericAmount
-    )
-  ) {
+  const apiKey = getApiKey(env);
+  const mode = getModeFromApiKey(apiKey);
+
+  const { payload } = await blupalRequest(
+    env,
+    'POST',
+    '/v1/invoices/create',
+    { amount },
+  );
+
+  if (payload?.success !== true) {
     throw new Error(
-      `Invalid Blupal amount: ${rialAmount}. Amount must be an integer in IRR.`
+      `Blupal invoice creation rejected: ${payload?.message || payload?.error || 'Unknown error'}`
     );
   }
 
-  if (
-    numericAmount < 100_000
-  ) {
+  const invoiceId = Number(payload.invoice_id);
+  const returnedAmount = Number(payload.amount);
+  const finalAmount = Number(payload.final_amount);
+
+  if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
+    throw new Error('Blupal returned an invalid invoice_id.');
+  }
+
+  if (!Number.isInteger(returnedAmount) || returnedAmount <= 0) {
+    throw new Error('Blupal returned an invalid amount.');
+  }
+
+  if (!Number.isInteger(finalAmount) || finalAmount <= 0) {
+    throw new Error('Blupal returned an invalid final_amount.');
+  }
+
+  if (returnedAmount !== amount) {
     throw new Error(
-      `Blupal amount is too low: ${numericAmount} IRR. Minimum is 100000 IRR.`
+      `Blupal amount mismatch. Requested ${amount}, received ${returnedAmount}.`
     );
   }
 
-  if (
-    numericAmount > 500_000_000
-  ) {
-    throw new Error(
-      `Blupal amount is too high: ${numericAmount} IRR. Maximum is 500000000 IRR.`
-    );
+  if (finalAmount < returnedAmount) {
+    throw new Error('Blupal returned final_amount lower than amount.');
   }
-
-  const {
-    payload,
-  } =
-    await blupalRequest(
-      env,
-      'POST',
-      '/v1/invoices/create',
-      {
-        amount:
-          numericAmount,
-      }
-    );
-
-  if (
-    payload?.success !== true
-  ) {
-    throw new Error(
-      `Blupal rejected invoice creation: ${
-        payload?.message ||
-        payload?.error ||
-        'Unknown error'
-      }`
-    );
-  }
-
-  const invoiceId =
-    Number(
-      payload.invoice_id
-    );
-
-  const amount =
-    Number(
-      payload.amount
-    );
-
-  const finalAmount =
-    Number(
-      payload.final_amount
-    );
-
-  if (
-    !Number.isInteger(
-      invoiceId
-    ) ||
-    invoiceId <= 0
-  ) {
-    throw new Error(
-      'Blupal returned an invalid invoice_id.'
-    );
-  }
-
-  if (
-    !Number.isInteger(
-      amount
-    ) ||
-    amount <= 0
-  ) {
-    throw new Error(
-      'Blupal returned an invalid amount.'
-    );
-  }
-
-  if (
-    !Number.isInteger(
-      finalAmount
-    ) ||
-    finalAmount <= 0
-  ) {
-    throw new Error(
-      'Blupal returned an invalid final_amount.'
-    );
-  }
-
-  /*
-   * مبلغ دریافتی از Blupal
-   * باید با مبلغی که درخواست کرده‌ایم
-   * برابر باشد.
-   */
-  if (
-    amount !== numericAmount
-  ) {
-    throw new Error(
-      `Blupal amount mismatch. Requested: ${numericAmount}, received: ${amount}`
-    );
-  }
-
-  /*
-   * final_amount باید حداقل برابر
-   * amount باشد.
-   */
-  if (
-    finalAmount < amount
-  ) {
-    throw new Error(
-      `Blupal returned invalid final_amount: ${finalAmount}`
-    );
-  }
-
-  const apiKey =
-    getApiKey(env);
-
-  const mode =
-    payload.mode ??
-    getModeFromApiKey(
-      apiKey
-    );
 
   return {
-    invoice_id:
-      invoiceId,
-
-    amount:
-      amount,
-
-    final_amount:
-      finalAmount,
-
-    status:
-      payload.status ??
-      'PENDING',
-
-    payment_link:
-      payload.payment_link ??
-      null,
-
-    card_number:
-      payload.card_number ??
-      null,
-
-    mode:
-      mode,
-
-    expires_at:
-      payload.expires_at ??
-      null,
+    invoice_id: invoiceId,
+    amount: returnedAmount,
+    final_amount: finalAmount,
+    status: payload.status ?? 'PENDING',
+    payment_link: payload.payment_link ?? null,
+    card_number: payload.card_number ?? null,
+    mode: payload.mode ?? mode,
+    expires_at: payload.expires_at ?? null,
   };
 }
 
+export async function getBlupalInvoice(env, invoiceId) {
+  const id = Number(invoiceId);
 
-/**
- * دریافت وضعیت فاکتور
- */
-export async function getBlupalInvoice(
-  env,
-  invoiceId
-) {
-  const numericInvoiceId =
-    Number(invoiceId);
-
-  if (
-    !Number.isInteger(
-      numericInvoiceId
-    ) ||
-    numericInvoiceId <= 0
-  ) {
-    throw new Error(
-      `Invalid Blupal invoice ID: ${invoiceId}`
-    );
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error(`Invalid Blupal invoice ID: ${invoiceId}`);
   }
 
-  const {
-    payload,
-  } =
-    await blupalRequest(
-      env,
-      'GET',
-      `/v1/invoices/${encodeURIComponent(numericInvoiceId)}`
-    );
+  const { payload } = await blupalRequest(
+    env,
+    'GET',
+    `/v1/invoices/${encodeURIComponent(id)}`,
+  );
 
-  if (
-    payload?.success !== true
-  ) {
+  if (payload?.success !== true) {
     throw new Error(
-      `Blupal invoice lookup failed: ${
-        payload?.message ||
-        payload?.error ||
-        'Unknown error'
-      }`
+      `Blupal invoice lookup failed: ${payload?.message || payload?.error || 'Unknown error'}`
     );
   }
 
   return payload;
 }
 
-
-/**
- * شبیه‌سازی پرداخت در Sandbox
- *
- * فقط برای تست.
- *
- * scenario:
- * success
- * wrong_amount
- * expire
- * cancel
- */
-export async function simulateBlupalPayment(
-  env,
-  invoiceId,
-  scenario = 'success'
-) {
-  const apiKey =
-    getApiKey(env);
-
-  const mode =
-    getModeFromApiKey(
-      apiKey
-    );
-
-  if (
-    mode !== 'sandbox'
-  ) {
-    throw new Error(
-      'Blupal payment simulation is only available in sandbox mode.'
-    );
-  }
-
-  const numericInvoiceId =
-    Number(invoiceId);
-
-  if (
-    !Number.isInteger(
-      numericInvoiceId
-    ) ||
-    numericInvoiceId <= 0
-  ) {
-    throw new Error(
-      `Invalid Blupal invoice ID: ${invoiceId}`
-    );
-  }
-
-  const validScenarios =
-    new Set([
-      'success',
-      'wrong_amount',
-      'expire',
-      'cancel',
-    ]);
-
-  if (
-    !validScenarios.has(
-      scenario
-    )
-  ) {
-    throw new Error(
-      `Invalid sandbox scenario: ${scenario}`
-    );
-  }
-
-  const {
-    payload,
-  } =
-    await blupalRequest(
-      env,
-      'POST',
-      `/v1/sandbox/invoices/${encodeURIComponent(numericInvoiceId)}/simulate`,
-      {
-        scenario,
-      }
-    );
-
-  if (
-    payload?.success !== true
-  ) {
-    throw new Error(
-      `Blupal sandbox simulation failed: ${
-        payload?.message ||
-        payload?.error ||
-        'Unknown error'
-      }`
-    );
-  }
-
-  return payload;
-}
-
-
-/**
- * خروجی پیش‌فرض
- */
 export default {
   createBlupalInvoice,
   getBlupalInvoice,
-  simulateBlupalPayment,
 };
