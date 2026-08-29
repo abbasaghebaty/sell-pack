@@ -9,17 +9,19 @@ import {
 
 import {
   clearPurchaseInviteLink,
+  deactivateCourseBuyer,
+  getActiveCourseBuyer,
   getActivePurchaseByTelegramId,
   getExpiredPurchases,
   getPurchaseByInviteLink,
-  getActivePurchasesWithoutInviteLink,
   markPurchaseExpired,
   markPurchaseJoined,
   savePurchaseInviteLink,
   setPurchaseActivation,
+  upsertCourseBuyer,
 } from '../database/coursePurchases.js';
 
-import { getCoursePlan, formatToman } from '../config/coursePlans.js';
+import { getCoursePlan } from '../config/coursePlans.js';
 
 export const COURSE_CHANNEL_ID = '-1004412265336';
 const INVITE_LINK_TTL_SECONDS = 24 * 60 * 60;
@@ -37,17 +39,31 @@ function getChannelId(env) {
   return String(env?.COURSE_CHANNEL_ID || COURSE_CHANNEL_ID);
 }
 
-function calculateExpiry(durationDays) {
+function calculateExpiry(durationDays, base = new Date()) {
   if (!durationDays) return null;
-  return new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+  return new Date(base.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 }
 
-export async function issueFreshInviteLink(db, env, purchase) {
+function isNotExpired(expiresAt) {
+  return !expiresAt || new Date(expiresAt).getTime() > Date.now();
+}
+
+export async function issueFreshInviteLink(db, env, purchase, forceNew = false) {
   const botToken = env?.TELEGRAM_BOT_TOKEN;
   const channelId = getChannelId(env);
 
   if (!botToken) throw new Error('TELEGRAM_BOT_TOKEN is missing');
   if (!purchase?.id) throw new Error('Purchase is missing');
+
+  const existingValidLink =
+    !forceNew &&
+    purchase.invite_link &&
+    purchase.invite_link_expires_at &&
+    new Date(purchase.invite_link_expires_at).getTime() > Date.now();
+
+  if (existingValidLink) {
+    return purchase.invite_link;
+  }
 
   if (purchase.invite_link) {
     try {
@@ -57,13 +73,10 @@ export async function issueFreshInviteLink(db, env, purchase) {
     }
   }
 
-  const inviteLinkExpiresAt = new Date(
-    Date.now() + INVITE_LINK_TTL_SECONDS * 1000
-  );
-
+  const expiresAt = new Date(Date.now() + INVITE_LINK_TTL_SECONDS * 1000);
   const invite = await createChatInviteLink(botToken, channelId, {
     name: `purchase-${purchase.id}`,
-    expireDate: Math.floor(inviteLinkExpiresAt.getTime() / 1000),
+    expireDate: Math.floor(expiresAt.getTime() / 1000),
   });
 
   if (!invite?.invite_link) {
@@ -74,7 +87,7 @@ export async function issueFreshInviteLink(db, env, purchase) {
     db,
     purchase.id,
     invite.invite_link,
-    inviteLinkExpiresAt.toISOString()
+    expiresAt.toISOString(),
   );
 
   return invite.invite_link;
@@ -87,34 +100,35 @@ export async function activateCoursePurchase(db, env, purchase) {
     throw new Error(`Unknown course plan: ${purchase.course_plan}`);
   }
 
-  const alreadyActive =
-    purchase.status === 'approved' &&
-    purchase.access_status === 'active' &&
-    (purchase.expires_at === null || purchase.expires_at > new Date().toISOString());
+  let expiresAt = purchase.expires_at ?? null;
 
-  if (!alreadyActive) {
-    const expiresAt = plan?.durationDays
-      ? calculateExpiry(plan.durationDays)
-      : null;
-
-    await setPurchaseActivation(db, purchase.id, expiresAt);
+  // First activation: duration starts when payment is approved.
+  if (!purchase.expires_at || !isNotExpired(purchase.expires_at)) {
+    expiresAt = calculateExpiry(plan?.durationDays ?? null);
   }
 
+  await setPurchaseActivation(db, purchase.id, expiresAt);
+
+  await upsertCourseBuyer(
+    db,
+    purchase.telegram_id,
+    purchase.course_plan || 'legacy',
+    purchase.paid_at || new Date().toISOString(),
+    expiresAt,
+  );
+
   const freshPurchase = await db.prepare(`
-    SELECT cp.*, u.telegram_id
+    SELECT cp.*, u.telegram_id, u.username, u.first_name, u.last_name
     FROM course_purchases cp
     INNER JOIN users u ON u.id = cp.user_id
     WHERE cp.id = ?
     LIMIT 1
   `).bind(purchase.id).first();
 
-  const inviteLink = await issueFreshInviteLink(db, env, freshPurchase);
+  const inviteLink = await issueFreshInviteLink(db, env, freshPurchase, true);
 
   return {
-    purchase: {
-      ...freshPurchase,
-      invite_link: inviteLink,
-    },
+    purchase: { ...freshPurchase, invite_link: inviteLink },
     inviteLink,
   };
 }
@@ -125,17 +139,16 @@ export async function sendAccessLink(db, env, purchase, extraText = '') {
 
   const plan = getCoursePlan(purchase.course_plan);
   const inviteLink = await issueFreshInviteLink(db, env, purchase);
-
   const expiryText = purchase.expires_at
     ? new Date(purchase.expires_at).toLocaleString('fa-IR')
     : 'بدون محدودیت زمانی';
 
   const text =
     `🔐 <b>دسترسی اختصاصی شما فعال است</b>\n\n` +
-    `${extraText ? `${extraText}\n\n` : ''}` +
+    `${extraText ? `${escapeHtml(extraText)}\n\n` : ''}` +
     `اشتراک: <b>${escapeHtml(plan?.title || 'دائمی')}</b>\n` +
     `اعتبار تا: <b>${escapeHtml(expiryText)}</b>\n\n` +
-    `این لینک فقط برای حساب Telegram شما معتبر است و پس از اولین درخواست ورود مصرف می‌شود.\n\n` +
+    `این لینک فقط برای حساب Telegram شما صادر شده است و پس از اولین ورود مصرف می‌شود.\n\n` +
     `<a href="${escapeHtml(inviteLink)}">ورود به کانال خصوصی</a>`;
 
   await sendMessage(botToken, purchase.telegram_id, text);
@@ -156,17 +169,17 @@ export async function handleCourseJoinRequest(joinRequest, env, db) {
     ? await getPurchaseByInviteLink(db, usedInviteLink)
     : null;
 
-  const activeRequesterPurchase = await getActivePurchaseByTelegramId(
-    db,
-    requesterId
-  );
+  const activeRequesterPurchase = await getActivePurchaseByTelegramId(db, requesterId);
+  const activeBuyer = await getActiveCourseBuyer(db, requesterId);
 
-  if (
+  const validLinkedPurchase =
     linkedPurchase &&
     Number(linkedPurchase.telegram_id) === Number(requesterId) &&
     linkedPurchase.status === 'approved' &&
-    (linkedPurchase.expires_at === null || linkedPurchase.expires_at > new Date().toISOString())
-  ) {
+    linkedPurchase.access_status === 'active' &&
+    isNotExpired(linkedPurchase.expires_at);
+
+  if (validLinkedPurchase) {
     await approveChatJoinRequest(botToken, channelId, requesterId);
     await markPurchaseJoined(db, linkedPurchase.id);
 
@@ -183,8 +196,7 @@ export async function handleCourseJoinRequest(joinRequest, env, db) {
         botToken,
         requesterId,
         `✅ <b>عضویت شما با موفقیت تأیید شد.</b>\n\n` +
-        `دسترسی شما به کانال خصوصی فعال است.\n` +
-        `لطفاً لینک دعوت اختصاصی خود را با دیگران به اشتراک نگذارید.`
+        `دسترسی شما به کانال خصوصی فعال است.`,
       );
     } catch (error) {
       console.warn('Join approval notification failed:', error.message);
@@ -195,7 +207,7 @@ export async function handleCourseJoinRequest(joinRequest, env, db) {
 
   await declineChatJoinRequest(botToken, channelId, requesterId);
 
-  if (usedInviteLink) {
+  if (usedInviteLink && linkedPurchase) {
     try {
       await revokeChatInviteLink(botToken, channelId, usedInviteLink);
     } catch (error) {
@@ -203,28 +215,31 @@ export async function handleCourseJoinRequest(joinRequest, env, db) {
     }
   }
 
-  if (activeRequesterPurchase) {
+  if (activeRequesterPurchase || activeBuyer) {
+    const purchase = activeRequesterPurchase || await getActivePurchaseByTelegramId(db, requesterId);
+
     try {
       await sendAccessLink(
         db,
         env,
-        activeRequesterPurchase,
-        `این لینک به حساب دیگری تعلق داشت و برای شما قابل استفاده نیست. لینک اختصاصی جدید مخصوص حساب خودتان ایجاد شد.`
+        purchase,
+        'این لینک برای حساب دیگری صادر شده بود و قابل استفاده برای شما نیست. لینک اختصاصی جدید برای حساب خودتان ایجاد شد.',
       );
     } catch (error) {
       console.error('Could not send replacement invite:', error.message);
     }
-  } else {
-    try {
-      await sendMessage(
-        botToken,
-        joinRequest.user_chat_id ?? requesterId,
-        `⛔ <b>این لینک برای حساب دیگری صادر شده است.</b>\n\n` +
-        `هر اشتراک فقط برای همان حساب Telegram فعال می‌شود و امکان استفاده از لینک دیگران وجود ندارد.`
-      );
-    } catch (error) {
-      console.warn('Unauthorized join notification failed:', error.message);
-    }
+    return;
+  }
+
+  try {
+    await sendMessage(
+      botToken,
+      joinRequest.user_chat_id ?? requesterId,
+      `⛔ <b>این لینک برای حساب دیگری صادر شده است.</b>\n\n` +
+      `هر اشتراک فقط برای همان حساب Telegram فعال می‌شود و امکان استفاده از لینک دیگران وجود ندارد.`,
+    );
+  } catch (error) {
+    console.warn('Unauthorized join notification failed:', error.message);
   }
 }
 
@@ -241,10 +256,12 @@ export async function expireCourses(db, env) {
         try {
           await revokeChatInviteLink(botToken, channelId, purchase.invite_link);
         } catch (error) {
-          console.warn(`Could not revoke expired purchase ${purchase.id} link:`, error.message);
+          console.warn(`Could not revoke expired link ${purchase.id}:`, error.message);
         }
       }
 
+      // Telegram's unbanChatMember removes an existing member while allowing
+      // the user to join again later through a new invite link.
       try {
         await unbanChatMember(botToken, channelId, purchase.telegram_id);
       } catch (error) {
@@ -252,6 +269,7 @@ export async function expireCourses(db, env) {
       }
 
       await markPurchaseExpired(db, purchase.id);
+      await deactivateCourseBuyer(db, purchase.telegram_id);
 
       try {
         await sendMessage(
@@ -259,25 +277,13 @@ export async function expireCourses(db, env) {
           purchase.telegram_id,
           `⏳ <b>اشتراک شما به پایان رسید</b>\n\n` +
           `با عرض پوزش، مدت اشتراک شما به پایان رسیده و دسترسی شما به کانال خصوصی حذف شد.\n\n` +
-          `برای فعال‌سازی مجدد دسترسی، می‌توانید از منوی زیر اشتراک جدید تهیه کنید.`,
+          `برای فعال‌سازی مجدد، می‌توانید از منوی زیر اشتراک جدید تهیه کنید.`,
         );
       } catch (error) {
         console.warn(`Could not notify expired user ${purchase.telegram_id}:`, error.message);
       }
     } catch (error) {
       console.error(`Failed to expire purchase ${purchase.id}:`, error.message);
-    }
-  }
-}
-
-export async function syncMissingInviteLinks(db, env) {
-  const purchases = await getActivePurchasesWithoutInviteLink(db);
-
-  for (const purchase of purchases) {
-    try {
-      await sendAccessLink(db, env, purchase);
-    } catch (error) {
-      console.error(`Failed to restore invite for purchase ${purchase.id}:`, error.message);
     }
   }
 }

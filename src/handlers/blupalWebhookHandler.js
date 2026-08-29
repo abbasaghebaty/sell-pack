@@ -2,16 +2,13 @@
  * Blupal Webhook Handler
  */
 
+import { sendMessage } from '../api/telegram.js';
 import {
   approveBlupalPurchase,
   findPurchaseByInvoiceId,
 } from '../database/coursePurchases.js';
-
-import { sendMessage } from '../api/telegram.js';
-
-import {
-  activateCoursePurchase,
-} from './courseAccessHandler.js';
+import { activateCoursePurchase } from './courseAccessHandler.js';
+import { getCoursePlan } from '../config/coursePlans.js';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -38,7 +35,19 @@ export async function handleBlupalWebhook(request, env, db) {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  if (payload?.event !== 'payment.completed' || payload?.status !== 'PAID') {
+  console.log('Blupal webhook received:', {
+    event: payload?.event,
+    status: payload?.status,
+    invoice_id: payload?.invoice_id,
+    amount: payload?.amount,
+    mode: payload?.mode,
+  });
+
+  if (
+    payload?.success !== true ||
+    payload?.event !== 'payment.completed' ||
+    payload?.status !== 'PAID'
+  ) {
     return Response.json({ received: true, ignored: true }, { status: 200 });
   }
 
@@ -46,18 +55,24 @@ export async function handleBlupalWebhook(request, env, db) {
   const amount = Number(payload.amount);
   const finalAmount = Number(payload.final_amount);
 
-  if (!Number.isInteger(invoiceId) || !Number.isInteger(amount) || !Number.isInteger(finalAmount)) {
+  if (
+    !Number.isInteger(invoiceId) ||
+    !Number.isInteger(amount) ||
+    !Number.isInteger(finalAmount)
+  ) {
     return Response.json({ error: 'Invalid payment payload' }, { status: 400 });
   }
 
   const existingPurchase = await findPurchaseByInvoiceId(db, invoiceId);
+
   if (!existingPurchase) {
-    console.error(`Blupal webhook: invoice ${invoiceId} not found in DB`);
+    console.error(`Blupal webhook: invoice ${invoiceId} not found.`);
     return Response.json({ error: 'Invoice not found' }, { status: 404 });
   }
 
   if (Number(existingPurchase.amount) !== amount) {
-    console.error(`Blupal webhook amount mismatch for invoice ${invoiceId}`, {
+    console.error('Blupal webhook amount mismatch:', {
+      invoiceId,
       expected: existingPurchase.amount,
       received: amount,
     });
@@ -72,11 +87,14 @@ export async function handleBlupalWebhook(request, env, db) {
       : null;
 
   if (expectedMode && payload.mode && payload.mode !== expectedMode) {
-    console.error(`Blupal webhook mode mismatch for invoice ${invoiceId}`);
     return Response.json({ error: 'Mode mismatch' }, { status: 400 });
   }
 
   const wasAlreadyApproved = existingPurchase.status === 'approved';
+
+  if (wasAlreadyApproved && existingPurchase.access_status === 'active') {
+    return Response.json({ received: true, duplicate: true }, { status: 200 });
+  }
 
   const approvedPurchase = await approveBlupalPurchase(
     db,
@@ -90,45 +108,38 @@ export async function handleBlupalWebhook(request, env, db) {
     return Response.json({ error: 'Could not approve purchase' }, { status: 500 });
   }
 
-  let activated;
+  let activated = null;
+
   try {
-    if (wasAlreadyApproved && existingPurchase.invite_link) {
-      activated = {
-        purchase: existingPurchase,
-        inviteLink: existingPurchase.invite_link,
-      };
-    } else {
-      activated = await activateCoursePurchase(db, env, approvedPurchase);
-    }
+    activated = await activateCoursePurchase(db, env, approvedPurchase);
   } catch (error) {
-    console.error(`Course activation failed for purchase ${approvedPurchase.id}:`, error.message, error.stack);
-    return Response.json({ error: 'Payment approved but course activation failed' }, { status: 500 });
+    console.error(
+      `Course activation failed for purchase ${approvedPurchase.id}:`,
+      error.message,
+      error.stack,
+    );
+    return Response.json(
+      { error: 'Payment approved but course activation failed' },
+      { status: 500 },
+    );
   }
+
+  const plan = getCoursePlan(activated.purchase.course_plan);
+  const planTitle = plan?.title || 'دائمی';
+  const expiryText = activated.purchase.expires_at
+    ? new Date(activated.purchase.expires_at).toLocaleString('fa-IR')
+    : 'بدون تاریخ انقضا';
 
   if (!wasAlreadyApproved || !existingPurchase.invite_link) {
     try {
-      const expiryText = activated.purchase.expires_at
-        ? new Date(activated.purchase.expires_at).toLocaleString('fa-IR')
-        : 'بدون تاریخ انقضا';
-
-      const planTitle = activated.purchase.course_plan === '7d'
-        ? '۷ روز'
-        : activated.purchase.course_plan === '30d'
-          ? '۳۰ روز'
-          : activated.purchase.course_plan === '90d'
-            ? '۹۰ روز'
-            : activated.purchase.course_plan === '180d'
-              ? '۱۸۰ روز'
-              : 'دائمی';
-
       await sendMessage(
         env.TELEGRAM_BOT_TOKEN,
         activated.purchase.telegram_id,
         `✅ <b>پرداخت با موفقیت تأیید شد</b>\n\n` +
-        `اشتراک <b>${escapeHtml(planTitle)}</b> برای حساب Telegram شما فعال شد.\n\n` +
-        `مبلغ پرداختی: <b>${Math.floor(finalAmount / 10).toLocaleString('fa-IR')}</b> تومان\n` +
+        `اشتراک <b>${escapeHtml(planTitle)}</b> فعال شد.\n\n` +
+        `مبلغ پرداختی: <b>${Math.floor(finalAmount / 10).toLocaleString('fa-IR')} تومان</b>\n` +
         `اعتبار تا: <b>${escapeHtml(expiryText)}</b>\n\n` +
-        `لینک زیر فقط برای حساب شما صادر شده است:\n\n` +
+        `لینک زیر فقط برای حساب Telegram شما صادر شده است:\n\n` +
         `<a href="${escapeHtml(activated.inviteLink)}">ورود به کانال خصوصی</a>`,
       );
     } catch (error) {
