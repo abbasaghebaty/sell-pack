@@ -9,139 +9,225 @@ import {
   PAYMENT_CONFIG,
 } from '../config/payment.js';
 
+export function rialToToman(
+  rialAmount
+) {
+  const value =
+    Number(rialAmount);
 
-/**
- * تبدیل ریال به تومان
- *
- * 2,000,000 ریال
- * => 200,000 تومان
- */
-export function rialToToman(rialAmount) {
-  const value = Number(rialAmount);
-
-  if (!Number.isFinite(value)) {
+  if (
+    !Number.isFinite(value)
+  ) {
     return 0;
   }
 
-  return Math.floor(value / 10);
+  return Math.floor(
+    value / 10
+  );
 }
 
+export function formatTomanCompact(
+  rialAmount
+) {
+  const toman =
+    rialToToman(
+      rialAmount
+    );
 
-/**
- * نمایش مبلغ به فرمت T
- *
- * T = هزار تومان
- *
- * 1,000 تومان
- * => 1T
- *
- * 200,000 تومان
- * => 200T
- *
- * 203,500 تومان
- * => 203.5T
- *
- * 2,035,000 تومان
- * => 2035T
- */
-export function formatTomanCompact(rialAmount) {
-  const toman = rialToToman(rialAmount);
-  const compact = toman / 1000;
+  const compact =
+    toman / 1000;
 
-  if (!Number.isFinite(compact)) {
+  if (
+    !Number.isFinite(
+      compact
+    )
+  ) {
     return '0T';
   }
 
-  if (Number.isInteger(compact)) {
+  if (
+    Number.isInteger(
+      compact
+    )
+  ) {
     return `${compact}T`;
   }
 
-  return `${Number(compact.toFixed(3))}T`;
+  return `${Number(
+    compact.toFixed(3)
+  )}T`;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(
+      /&/g,
+      '&amp;'
+    )
+    .replace(
+      /</g,
+      '&lt;'
+    )
+    .replace(
+      />/g,
+      '&gt;'
+    )
+    .replace(
+      /"/g,
+      '&quot;'
+    )
+    .replace(
+      /'/g,
+      '&#039;'
+    );
+}
 
 /**
- * ساخت کیبورد پرداخت
+ * کیبورد پرداخت
  *
- * دکمه اول:
- * نام مالک حساب را نشان می‌دهد
- * ولی شماره کارت را کپی می‌کند.
+ * اگر Blupal لینک پرداخت بدهد،
+ * دکمه مستقیم ورود به پرداخت نمایش داده می‌شود.
  *
- * دکمه دوم:
- * مبلغ را به صورت T نشان می‌دهد
- * ولی مبلغ دقیق ریالی را کپی می‌کند.
+ * اگر لینک ندهد،
+ * اطلاعات کارت نمایش داده می‌شود.
  */
 export function buildPaymentKeyboard(
-  finalAmountRial
+  options
 ) {
+  const finalAmountRial =
+    typeof options ===
+    'object'
+      ? options.finalAmountRial
+      : options;
+
+  const paymentLink =
+    typeof options ===
+    'object'
+      ? options.paymentLink ??
+        null
+      : null;
+
   const cardNumber =
-    String(
-      PAYMENT_CONFIG.CARD_NUMBER || ''
-    ).trim();
+    typeof options ===
+    'object'
+      ? (
+          options.cardNumber ??
+          PAYMENT_CONFIG.CARD_NUMBER
+        )
+      : PAYMENT_CONFIG.CARD_NUMBER;
 
   const cardHolder =
-    String(
-      PAYMENT_CONFIG.CARD_HOLDER || ''
-    ).trim();
+    PAYMENT_CONFIG.CARD_HOLDER;
 
   const exactAmountRial =
     Math.trunc(
-      Number(finalAmountRial)
-    );
-
-  const compactAmount =
-    formatTomanCompact(
-      finalAmountRial
+      Number(
+        finalAmountRial
+      )
     );
 
   if (
-    !cardNumber ||
-    !cardHolder ||
-    !Number.isInteger(exactAmountRial) ||
+    !Number.isInteger(
+      exactAmountRial
+    ) ||
     exactAmountRial <= 0
   ) {
     throw new Error(
-      'Invalid payment keyboard configuration.'
+      'Invalid payment amount.'
     );
   }
 
-return {
-  inline_keyboard: [
-    [
+  const buttons = [];
+
+  /*
+   * لینک واقعی پرداخت Blupal
+   */
+  if (
+    typeof paymentLink ===
+      'string' &&
+    paymentLink.trim()
+  ) {
+    buttons.push([
       {
-        text: compactAmount,
+        text:
+          '💳 پرداخت / مشاهده فاکتور',
+        url:
+          paymentLink.trim(),
+      },
+    ]);
+  }
+
+  /*
+   * مبلغ برای Copy
+   */
+  buttons.push([
+    {
+      text:
+        formatTomanCompact(
+          exactAmountRial
+        ),
+
+      copy_text: {
+        text:
+          String(
+            exactAmountRial
+          ),
+      },
+    },
+  ]);
+
+  /*
+   * کارت در صورت وجود
+   */
+  if (
+    cardNumber &&
+    cardHolder
+  ) {
+    buttons.push([
+      {
+        text:
+          `👤 ${cardHolder}`,
+
         copy_text: {
-          text: String(exactAmountRial),
+          text:
+            String(
+              cardNumber
+            ),
         },
       },
-      {
-        text: `👤 ${cardHolder}`,
-        copy_text: {
-          text: cardNumber,
-        },
-      },
-    ],
-  ],
-};
+    ]);
+  }
+
+  return {
+    inline_keyboard:
+      buttons,
+  };
 }
 
-/**
- * ساخت متن کامل فاکتور
- */
 export function buildPaymentMessage({
   baseAmountRial,
   finalAmountRial,
   expiresAt = null,
+  paymentLink = null,
+  cardNumber = null,
 }) {
   const baseAmount =
-    Number(baseAmountRial);
+    Number(
+      baseAmountRial
+    );
 
   const finalAmount =
-    Number(finalAmountRial);
+    Number(
+      finalAmountRial
+    );
 
   if (
-    !Number.isInteger(baseAmount) ||
-    !Number.isInteger(finalAmount) ||
+    !Number.isInteger(
+      baseAmount
+    ) ||
+    !Number.isInteger(
+      finalAmount
+    ) ||
     baseAmount <= 0 ||
     finalAmount <= 0
   ) {
@@ -150,86 +236,69 @@ export function buildPaymentMessage({
     );
   }
 
-  if (
-    finalAmount < baseAmount
-  ) {
-    throw new Error(
-      'Final payment amount cannot be lower than base amount.'
-    );
-  }
-
-  const baseCompact =
-    formatTomanCompact(
+  const baseToman =
+    rialToToman(
       baseAmount
     );
 
-  const finalCompact =
-    formatTomanCompact(
+  const finalToman =
+    rialToToman(
       finalAmount
     );
 
-  const cardNumber =
-    String(
-      PAYMENT_CONFIG.CARD_NUMBER || ''
-    ).trim();
+  const card =
+    cardNumber ??
+    PAYMENT_CONFIG.CARD_NUMBER;
 
   const cardHolder =
-    String(
-      PAYMENT_CONFIG.CARD_HOLDER || ''
-    ).trim();
+    PAYMENT_CONFIG.CARD_HOLDER;
+
+  let text =
+    `💳 <b>فاکتور پرداخت</b>\n\n` +
+
+    `مبلغ دوره: <b>${baseToman.toLocaleString(
+      'fa-IR'
+    )} تومان</b>\n` +
+
+    `مبلغ نهایی: <b>${finalToman.toLocaleString(
+      'fa-IR'
+    )} تومان</b>\n\n`;
 
   if (
-    !cardNumber ||
-    !cardHolder
+    paymentLink
   ) {
-    throw new Error(
-      'Payment card configuration is missing.'
-    );
+    text +=
+      `🔗 <b>لینک پرداخت Blupal برای شما ایجاد شد.</b>\n` +
+      `از دکمه «پرداخت / مشاهده فاکتور» استفاده کنید.\n\n`;
   }
 
-  let expiresText = '';
-
-  if (expiresAt) {
-    expiresText =
-      `\n⏳ اعتبار فاکتور: <b>${escapeHtml(expiresAt)}</b>`;
+  if (
+    card &&
+    cardHolder
+  ) {
+    text +=
+      `🏦 <b>اطلاعات پرداخت</b>\n\n` +
+      `شماره کارت:\n` +
+      `<code>${escapeHtml(
+        card
+      )}</code>\n\n` +
+      `مالک حساب:\n` +
+      `<b>${escapeHtml(
+        cardHolder
+      )}</b>\n\n`;
   }
 
-  return (
-    `💳 <b>خرید مستقیم دوره</b>\n\n` +
+  text +=
+    `❌ <b>مبلغ نهایی را دقیقاً مطابق فاکتور پرداخت کنید.</b>`;
 
-    `مبلغ دوره: <b>${baseCompact}</b>\n` +
-    `مبلغ نهایی پرداخت: <b>${finalCompact}</b>\n\n` +
+  if (
+    expiresAt
+  ) {
+    text +=
+      `\n\n⏳ اعتبار فاکتور: <b>${escapeHtml(
+        expiresAt
+      )}</b>`;
+  }
 
-    `🏦 <b>اطلاعات پرداخت</b>\n\n` +
-
-    `شماره کارت:\n` +
-    `<code>${escapeHtml(cardNumber)}</code>\n\n` +
-
-    `مالک حساب:\n` +
-    `<b>${escapeHtml(cardHolder)}</b>\n\n` +
-
-    `❌ <b>مبلغ نهایی را دقیقاً عین همین مبلغ واریز کنید.</b>\n\n` +
-
-    `<blockquote expandable>` +
-    `<b>نکته مهم پرداخت</b>\n\n` +
-    `مبلغ انتقالی باید دقیقاً با مبلغ نهایی فاکتور یکسان باشد.\n` +
-    `حتی اختلاف چند ریال هم ممکن است باعث شود پرداخت شما به‌صورت خودکار شناسایی نشود و خریدتان فعال نشود.\n\n` +
-    `قبل از تأیید انتقال، مبلغ را دوباره بررسی کنید و فقط همان مبلغ درج‌شده در فاکتور را واریز کنید.` +
-    `</blockquote>` +
-
-    expiresText
-  );
-}
-
-
-/**
- * Telegram HTML escape
- */
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+  return text;
 }
