@@ -40,6 +40,27 @@ function buildPlanListText() {
   ).join('\n');
 }
 
+function buildPendingPaymentResponse(plan, pendingPurchase) {
+  const paymentMessage = buildPaymentMessage({
+    baseAmountRial: Number(pendingPurchase.amount),
+    finalAmountRial: Number(pendingPurchase.blupal_final_amount),
+    expiresAt: pendingPurchase.blupal_expires_at ?? null,
+    paymentLink: pendingPurchase.blupal_payment_link ?? null,
+  });
+
+  const paymentKeyboard = buildPaymentKeyboard({
+    finalAmountRial: Number(pendingPurchase.blupal_final_amount),
+    paymentLink: pendingPurchase.blupal_payment_link ?? null,
+  });
+
+  return {
+    text:
+      `⚠️ <b>فاکتور ${escapeHtml(getPlanTitle(plan))} هنوز معتبر است.</b>\n\n` +
+      paymentMessage,
+    keyboard: paymentKeyboard,
+  };
+}
+
 async function showPlans(message, env) {
   return sendMessage(
     env.TELEGRAM_BOT_TOKEN,
@@ -54,10 +75,15 @@ async function showPlans(message, env) {
 
 async function sendActiveStatus(message, env, db, purchase) {
   const inviteLink = await issueFreshInviteLink(db, env, purchase);
+
   const expiryText = purchase.expires_at
     ? new Date(purchase.expires_at).toLocaleString('fa-IR')
     : 'بدون تاریخ انقضا';
-  const plan = COURSE_PLAN_LIST.find((item) => item.code === purchase.course_plan);
+
+  const plan = COURSE_PLAN_LIST.find(
+    (item) => item.code === purchase.course_plan
+  );
+
   const planTitle = plan?.title || 'دائمی';
 
   return sendMessage(
@@ -77,94 +103,253 @@ async function startSubscriptionPurchase(message, env, db, plan) {
   const chatId = message.chat.id;
 
   if (!db) {
-    return sendMessage(botToken, chatId, '❌ دیتابیس در دسترس نیست.', getCourseMenuKeyboard());
-  }
-
-  try {
-    const user = await ensureUser(db, message.from);
-    if (!user?.id) throw new Error('Could not resolve internal user id.');
-
-    const activePurchase = await getActivePurchase(db, user.id);
-    if (activePurchase) return sendActiveStatus(message, env, db, activePurchase);
-
-    const pendingPurchase = await getPendingBlupalPurchase(db, user.id);
-    if (pendingPurchase?.blupal_invoice_id && pendingPurchase?.blupal_final_amount) {
-      const paymentMessage = buildPaymentMessage({
-        baseAmountRial: Number(pendingPurchase.amount),
-        finalAmountRial: Number(pendingPurchase.blupal_final_amount),
-        expiresAt: pendingPurchase.blupal_expires_at ?? null,
-        paymentLink: pendingPurchase.blupal_payment_link ?? null,
-      });
-
-      const paymentKeyboard = buildPaymentKeyboard({
-        finalAmountRial: Number(pendingPurchase.blupal_final_amount),
-        paymentLink: pendingPurchase.blupal_payment_link ?? null,
-      });
-
-      return sendMessage(
-        botToken,
-        chatId,
-        `⚠️ <b>فاکتور قبلی شما هنوز معتبر است.</b>\n\n${paymentMessage}`,
-        paymentKeyboard,
-      );
-    }
-
-    const purchase = await createPurchase(db, user.id, plan);
-
-    try {
-      const invoice = await createBlupalInvoice(env, purchase.rialAmount);
-      await attachBlupalInvoice(db, purchase.id, invoice);
-
-      const paymentMessage = buildPaymentMessage({
-        baseAmountRial: Number(invoice.amount),
-        finalAmountRial: Number(invoice.final_amount),
-        expiresAt: invoice.expires_at ?? null,
-        paymentLink: invoice.payment_link ?? null,
-        cardNumber: invoice.card_number ?? null,
-      });
-
-      const paymentKeyboard = buildPaymentKeyboard({
-        finalAmountRial: Number(invoice.final_amount),
-        paymentLink: invoice.payment_link ?? null,
-        cardNumber: invoice.card_number ?? null,
-      });
-
-      return sendMessage(
-        botToken,
-        chatId,
-        `🛒 <b>اشتراک ${escapeHtml(getPlanTitle(plan))}</b>\n\n` +
-          `مبلغ اشتراک: <b>${formatToman(plan.priceToman)} تومان</b>\n\n` +
-          paymentMessage,
-        paymentKeyboard,
-      );
-    } catch (error) {
-      await cancelWaitingPurchase(db, purchase.id);
-      throw error;
-    }
-  } catch (error) {
-    console.error('Subscription purchase error:', error.message, error.stack);
     return sendMessage(
       botToken,
       chatId,
-      `❌ <b>ساخت فاکتور انجام نشد.</b>\n\n<code>${escapeHtml(error.message)}</code>`,
-      getCourseMenuKeyboard(),
+      '❌ دیتابیس در دسترس نیست.',
+      getCourseMenuKeyboard()
+    );
+  }
+
+  try {
+    const user = await ensureUser(
+      db,
+      message.from
+    );
+
+    if (!user?.id) {
+      throw new Error(
+        'Could not resolve internal user id.'
+      );
+    }
+
+    /*
+     * اگر اشتراک فعال دارد، اصلاً فاکتور جدید نساز.
+     */
+    const activePurchase =
+      await getActivePurchase(
+        db,
+        user.id
+      );
+
+    if (activePurchase) {
+      return sendActiveStatus(
+        message,
+        env,
+        db,
+        activePurchase
+      );
+    }
+
+    /*
+     * فقط فاکتور همان پلن بررسی می‌شود.
+     *
+     * مثال:
+     * ۷ روزه pending باشد و کاربر دائمی را بزند،
+     * چون دائمی pending ندارد، فاکتور جدید ساخته می‌شود.
+     */
+    const pendingPurchase =
+      await getPendingBlupalPurchase(
+        db,
+        user.id,
+        plan.code
+      );
+
+    if (
+      pendingPurchase?.blupal_invoice_id &&
+      pendingPurchase?.blupal_final_amount
+    ) {
+      const pendingResponse =
+        buildPendingPaymentResponse(
+          plan,
+          pendingPurchase
+        );
+
+      return sendMessage(
+        botToken,
+        chatId,
+        pendingResponse.text,
+        pendingResponse.keyboard
+      );
+    }
+
+    /*
+     * برای این پلن فاکتور معتبر وجود ندارد؛
+     * یک purchase جدید ساخته می‌شود.
+     */
+    const purchase =
+      await createPurchase(
+        db,
+        user.id,
+        plan
+      );
+
+    try {
+      const invoice =
+        await createBlupalInvoice(
+          env,
+          purchase.rialAmount
+        );
+
+      await attachBlupalInvoice(
+        db,
+        purchase.id,
+        invoice
+      );
+
+      const paymentMessage =
+        buildPaymentMessage({
+          baseAmountRial:
+            Number(invoice.amount),
+          finalAmountRial:
+            Number(invoice.final_amount),
+          expiresAt:
+            invoice.expires_at ??
+            null,
+          paymentLink:
+            invoice.payment_link ??
+            null,
+          cardNumber:
+            invoice.card_number ??
+            null,
+        });
+
+      const paymentKeyboard =
+        buildPaymentKeyboard({
+          finalAmountRial:
+            Number(invoice.final_amount),
+          paymentLink:
+            invoice.payment_link ??
+            null,
+          cardNumber:
+            invoice.card_number ??
+            null,
+        });
+
+      return sendMessage(
+        botToken,
+        chatId,
+        `🛒 <b>اشتراک ${escapeHtml(
+          getPlanTitle(plan)
+        )}</b>\n\n` +
+          `مبلغ اشتراک: <b>${formatToman(
+            plan.priceToman
+          )} تومان</b>\n\n` +
+          paymentMessage,
+        paymentKeyboard
+      );
+    } catch (error) {
+      await cancelWaitingPurchase(
+        db,
+        purchase.id
+      );
+
+      throw error;
+    }
+  } catch (error) {
+    /*
+     * اگر همزمان دو درخواست برای یک پلن رسیدند،
+     * unique index می‌تواند درخواست دوم را رد کند.
+     *
+     * اگر در این فاصله فاکتور اول ساخته شده باشد،
+     * همان فاکتور را برمی‌گردانیم.
+     */
+    try {
+      const user =
+        await ensureUser(
+          db,
+          message.from
+        );
+
+      const pendingPurchase =
+        await getPendingBlupalPurchase(
+          db,
+          user.id,
+          plan.code
+        );
+
+      if (
+        pendingPurchase?.blupal_invoice_id &&
+        pendingPurchase?.blupal_final_amount
+      ) {
+        const pendingResponse =
+          buildPendingPaymentResponse(
+            plan,
+            pendingPurchase
+          );
+
+        return sendMessage(
+          botToken,
+          chatId,
+          pendingResponse.text,
+          pendingResponse.keyboard
+        );
+      }
+    } catch (recoveryError) {
+      console.error(
+        'Pending purchase recovery failed:',
+        recoveryError.message
+      );
+    }
+
+    console.error(
+      'Subscription purchase error:',
+      error.message,
+      error.stack
+    );
+
+    return sendMessage(
+      botToken,
+      chatId,
+      `❌ <b>ساخت فاکتور انجام نشد.</b>\n\n<code>${escapeHtml(
+        error.message
+      )}</code>`,
+      getCourseMenuKeyboard()
     );
   }
 }
 
-export default async function handleSubscriptionMessage(message, env, db) {
-  if (!message?.chat || !message?.from) return;
-
-  const text = message.text?.trim();
-
-  if (isBuySubscriptionButton(text)) {
-    return showPlans(message, env);
+export default async function handleSubscriptionMessage(
+  message,
+  env,
+  db
+) {
+  if (
+    !message?.chat ||
+    !message?.from
+  ) {
+    return;
   }
 
-  const plan = getPlanFromButton(text);
+  const text =
+    message.text?.trim();
+
+  if (
+    isBuySubscriptionButton(text)
+  ) {
+    return showPlans(
+      message,
+      env
+    );
+  }
+
+  const plan =
+    getPlanFromButton(
+      text
+    );
+
   if (plan) {
-    return startSubscriptionPurchase(message, env, db, plan);
+    return startSubscriptionPurchase(
+      message,
+      env,
+      db,
+      plan
+    );
   }
 
-  return handleMessage(message, env, db);
+  return handleMessage(
+    message,
+    env,
+    db
+  );
 }
