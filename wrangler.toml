@@ -5,14 +5,22 @@ compatibility_date = "2026-08-18"
 
 [vars]
 ENVIRONMENT = "production"
+COURSE_CHANNEL_ID = "-1004412265336"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "sell-pack"
 database_id = "2a89652a-61ca-4f50-a3ed-02a5e899aa73"
 
+[triggers]
+# Check expired subscriptions every 5 minutes.
+crons = ["*/5 * * * *"]
+
 [env.production]
-vars = { ENVIRONMENT = "production" }
+vars = { ENVIRONMENT = "production", COURSE_CHANNEL_ID = "-1004412265336" }
+
+[env.production.triggers]
+crons = ["*/5 * * * *"]
 
 [env.development]
-vars = { ENVIRONMENT = "development" }
+vars = { ENVIRONMENT = "development", COURSE_CHANNEL_ID = "-1004412265336" }
