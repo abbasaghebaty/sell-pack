@@ -7,7 +7,7 @@
 
 export const COURSE_MENU_BUTTONS = Object.freeze({
   VERIFY_ADMIN: '🔎 استعلام ادمین',
-  BUY_DIRECT: '💳 خرید مستقیم دوره',
+  BUY_DIRECT: '💳 خرید اشتراک',
   BACK: '🔙 بازگشت',
 });
 
