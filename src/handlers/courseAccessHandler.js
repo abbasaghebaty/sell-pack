@@ -21,269 +21,715 @@ import {
   upsertCourseBuyer,
 } from '../database/coursePurchases.js';
 
-import { getCoursePlan } from '../config/coursePlans.js';
+import {
+  getCoursePlan,
+} from '../config/coursePlans.js';
 
-export const COURSE_CHANNEL_ID = '-1004412265336';
-const INVITE_LINK_TTL_SECONDS = 24 * 60 * 60;
+export const COURSE_CHANNEL_ID =
+  '-1004412265336';
+
+const INVITE_LINK_TTL_SECONDS =
+  24 * 60 * 60;
+
+function getChannelId(env) {
+  return String(
+    env?.COURSE_CHANNEL_ID ||
+    COURSE_CHANNEL_ID
+  );
+}
+
+function isNotExpired(
+  expiresAt
+) {
+  if (!expiresAt) {
+    return true;
+  }
+
+  const timestamp =
+    new Date(
+      expiresAt
+    ).getTime();
+
+  return (
+    Number.isFinite(
+      timestamp
+    ) &&
+    timestamp > Date.now()
+  );
+}
+
+function calculateExpiry(
+  durationDays,
+  base = new Date()
+) {
+  if (
+    !durationDays
+  ) {
+    return null;
+  }
+
+  return new Date(
+    base.getTime() +
+      durationDays *
+        24 *
+        60 *
+        60 *
+        1000
+  ).toISOString();
+}
 
 function escapeHtml(value) {
   return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(
+      /&/g,
+      '&amp;'
+    )
+    .replace(
+      /</g,
+      '&lt;'
+    )
+    .replace(
+      />/g,
+      '&gt;'
+    )
+    .replace(
+      /"/g,
+      '&quot;'
+    )
+    .replace(
+      /'/g,
+      '&#039;'
+    );
 }
 
-function getChannelId(env) {
-  return String(env?.COURSE_CHANNEL_ID || COURSE_CHANNEL_ID);
-}
+/**
+ * ساخت لینک اختصاصی
+ */
+export async function issueFreshInviteLink(
+  db,
+  env,
+  purchase,
+  forceNew = false
+) {
+  const botToken =
+    env?.TELEGRAM_BOT_TOKEN;
 
-function calculateExpiry(durationDays, base = new Date()) {
-  if (!durationDays) return null;
-  return new Date(base.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
-}
+  const channelId =
+    getChannelId(env);
 
-function isNotExpired(expiresAt) {
-  return !expiresAt || new Date(expiresAt).getTime() > Date.now();
-}
+  if (!botToken) {
+    throw new Error(
+      'TELEGRAM_BOT_TOKEN is missing.'
+    );
+  }
 
-export async function issueFreshInviteLink(db, env, purchase, forceNew = false) {
-  const botToken = env?.TELEGRAM_BOT_TOKEN;
-  const channelId = getChannelId(env);
+  if (!purchase?.id) {
+    throw new Error(
+      'Purchase is missing.'
+    );
+  }
 
-  if (!botToken) throw new Error('TELEGRAM_BOT_TOKEN is missing');
-  if (!purchase?.id) throw new Error('Purchase is missing');
-
-  const existingValidLink =
+  /*
+   * اگر لینک قبلی هنوز معتبر است
+   * همان را برگردان.
+   */
+  if (
     !forceNew &&
     purchase.invite_link &&
     purchase.invite_link_expires_at &&
-    new Date(purchase.invite_link_expires_at).getTime() > Date.now();
-
-  if (existingValidLink) {
+    isNotExpired(
+      purchase.invite_link_expires_at
+    )
+  ) {
     return purchase.invite_link;
   }
 
-  if (purchase.invite_link) {
+  /*
+   * لینک قدیمی
+   */
+  if (
+    purchase.invite_link
+  ) {
     try {
-      await revokeChatInviteLink(botToken, channelId, purchase.invite_link);
+      await revokeChatInviteLink(
+        botToken,
+        channelId,
+        purchase.invite_link
+      );
     } catch (error) {
-      console.warn('Could not revoke old invite link:', error.message);
+      console.warn(
+        'Could not revoke old invite:',
+        error.message
+      );
     }
   }
 
-  const expiresAt = new Date(Date.now() + INVITE_LINK_TTL_SECONDS * 1000);
-  const invite = await createChatInviteLink(botToken, channelId, {
-    name: `purchase-${purchase.id}`,
-    expireDate: Math.floor(expiresAt.getTime() / 1000),
-  });
+  const inviteExpiresAt =
+    new Date(
+      Date.now() +
+        INVITE_LINK_TTL_SECONDS *
+          1000
+    );
 
-  if (!invite?.invite_link) {
-    throw new Error('Telegram did not return an invite link');
+  const invite =
+    await createChatInviteLink(
+      botToken,
+      channelId,
+      {
+        name:
+          `purchase-${purchase.id}`,
+
+        expireDate:
+          Math.floor(
+            inviteExpiresAt.getTime() /
+              1000
+          ),
+      }
+    );
+
+  if (
+    !invite?.invite_link
+  ) {
+    throw new Error(
+      'Telegram did not return invite link.'
+    );
   }
 
   await savePurchaseInviteLink(
     db,
+
     purchase.id,
+
     invite.invite_link,
-    expiresAt.toISOString(),
+
+    inviteExpiresAt.toISOString()
   );
 
   return invite.invite_link;
 }
 
-export async function activateCoursePurchase(db, env, purchase) {
-  const plan = getCoursePlan(purchase.course_plan);
+/**
+ * فعال‌سازی خرید
+ */
+export async function activateCoursePurchase(
+  db,
+  env,
+  purchase
+) {
+  const plan =
+    getCoursePlan(
+      purchase.course_plan
+    );
 
-  if (!plan && purchase.course_plan !== 'legacy') {
-    throw new Error(`Unknown course plan: ${purchase.course_plan}`);
+  if (
+    !plan &&
+    purchase.course_plan !==
+      'legacy'
+  ) {
+    throw new Error(
+      `Unknown course plan: ${purchase.course_plan}`
+    );
   }
 
-  let expiresAt = purchase.expires_at ?? null;
+  let expiresAt =
+    purchase.expires_at ??
+    null;
 
-  // First activation: duration starts when payment is approved.
-  if (!purchase.expires_at || !isNotExpired(purchase.expires_at)) {
-    expiresAt = calculateExpiry(plan?.durationDays ?? null);
+  /*
+   * اگر دائمی است:
+   * expiresAt = null
+   *
+   * اگر زمان‌دار است:
+   * از لحظه تایید پرداخت
+   * مدت را محاسبه کن.
+   */
+  if (
+    plan?.durationDays
+  ) {
+    expiresAt =
+      calculateExpiry(
+        plan.durationDays
+      );
+  } else {
+    expiresAt = null;
   }
 
-  await setPurchaseActivation(db, purchase.id, expiresAt);
-
-  await upsertCourseBuyer(
+  await setPurchaseActivation(
     db,
-    purchase.telegram_id,
-    purchase.course_plan || 'legacy',
-    purchase.paid_at || new Date().toISOString(),
-    expiresAt,
+    purchase.id,
+    expiresAt
   );
 
-  const freshPurchase = await db.prepare(`
-    SELECT cp.*, u.telegram_id, u.username, u.first_name, u.last_name
-    FROM course_purchases cp
-    INNER JOIN users u ON u.id = cp.user_id
-    WHERE cp.id = ?
-    LIMIT 1
-  `).bind(purchase.id).first();
+  /*
+   * White list
+   */
+  await upsertCourseBuyer(
+    db,
 
-  const inviteLink = await issueFreshInviteLink(db, env, freshPurchase, true);
+    purchase.telegram_id,
+
+    purchase.course_plan ||
+      'legacy',
+
+    purchase.paid_at ||
+      new Date().toISOString(),
+
+    expiresAt
+  );
+
+  const freshPurchase =
+    await db
+      .prepare(`
+        SELECT
+          cp.*,
+          u.telegram_id,
+          u.username,
+          u.first_name,
+          u.last_name
+        FROM course_purchases cp
+        INNER JOIN users u
+          ON u.id = cp.user_id
+        WHERE cp.id = ?
+        LIMIT 1
+      `)
+      .bind(
+        purchase.id
+      )
+      .first();
+
+  const inviteLink =
+    await issueFreshInviteLink(
+      db,
+      env,
+      freshPurchase,
+      true
+    );
 
   return {
-    purchase: { ...freshPurchase, invite_link: inviteLink },
+    purchase: {
+      ...freshPurchase,
+      invite_link:
+        inviteLink,
+    },
+
     inviteLink,
   };
 }
 
-export async function sendAccessLink(db, env, purchase, extraText = '') {
-  const botToken = env?.TELEGRAM_BOT_TOKEN;
-  if (!botToken) throw new Error('TELEGRAM_BOT_TOKEN is missing');
+/**
+ * ارسال لینک دسترسی
+ */
+export async function sendAccessLink(
+  db,
+  env,
+  purchase,
+  extraText = ''
+) {
+  const botToken =
+    env?.TELEGRAM_BOT_TOKEN;
 
-  const plan = getCoursePlan(purchase.course_plan);
-  const inviteLink = await issueFreshInviteLink(db, env, purchase);
-  const expiryText = purchase.expires_at
-    ? new Date(purchase.expires_at).toLocaleString('fa-IR')
-    : 'بدون محدودیت زمانی';
+  if (!botToken) {
+    throw new Error(
+      'TELEGRAM_BOT_TOKEN is missing.'
+    );
+  }
+
+  const plan =
+    getCoursePlan(
+      purchase.course_plan
+    );
+
+  const inviteLink =
+    await issueFreshInviteLink(
+      db,
+      env,
+      purchase
+    );
+
+  const expiryText =
+    purchase.expires_at
+      ? new Date(
+          purchase.expires_at
+        ).toLocaleString(
+          'fa-IR'
+        )
+      : 'بدون محدودیت زمانی';
 
   const text =
-    `🔐 <b>دسترسی اختصاصی شما فعال است</b>\n\n` +
-    `${extraText ? `${escapeHtml(extraText)}\n\n` : ''}` +
-    `اشتراک: <b>${escapeHtml(plan?.title || 'دائمی')}</b>\n` +
-    `اعتبار تا: <b>${escapeHtml(expiryText)}</b>\n\n` +
-    `این لینک فقط برای حساب Telegram شما صادر شده است و پس از اولین ورود مصرف می‌شود.\n\n` +
-    `<a href="${escapeHtml(inviteLink)}">ورود به کانال خصوصی</a>`;
+    `🔐 <b>دسترسی اختصاصی شما</b>\n\n` +
 
-  await sendMessage(botToken, purchase.telegram_id, text);
+    `${
+      extraText
+        ? `${escapeHtml(
+            extraText
+          )}\n\n`
+        : ''
+    }` +
+
+    `اشتراک: <b>${escapeHtml(
+      plan?.title ||
+        'دائمی'
+    )}</b>\n` +
+
+    `اعتبار تا: <b>${escapeHtml(
+      expiryText
+    )}</b>\n\n` +
+
+    `این لینک فقط برای حساب Telegram خودتان صادر شده است.\n\n` +
+
+    `<a href="${escapeHtml(
+      inviteLink
+    )}">ورود به کانال خصوصی</a>`;
+
+  await sendMessage(
+    botToken,
+
+    purchase.telegram_id,
+
+    text
+  );
+
   return inviteLink;
 }
 
-export async function handleCourseJoinRequest(joinRequest, env, db) {
-  if (!joinRequest?.from || !joinRequest?.chat) return;
+/**
+ * Join Request
+ */
+export async function handleCourseJoinRequest(
+  joinRequest,
+  env,
+  db
+) {
+  if (
+    !joinRequest?.from ||
+    !joinRequest?.chat
+  ) {
+    return;
+  }
 
-  const channelId = getChannelId(env);
-  if (String(joinRequest.chat.id) !== channelId) return;
+  const channelId =
+    getChannelId(env);
 
-  const botToken = env?.TELEGRAM_BOT_TOKEN;
-  const requesterId = joinRequest.from.id;
-  const usedInviteLink = joinRequest.invite_link?.invite_link ?? null;
+  if (
+    String(
+      joinRequest.chat.id
+    ) !== channelId
+  ) {
+    return;
+  }
 
-  const linkedPurchase = usedInviteLink
-    ? await getPurchaseByInviteLink(db, usedInviteLink)
-    : null;
+  const botToken =
+    env?.TELEGRAM_BOT_TOKEN;
 
-  const activeRequesterPurchase = await getActivePurchaseByTelegramId(db, requesterId);
-  const activeBuyer = await getActiveCourseBuyer(db, requesterId);
+  if (!botToken) {
+    throw new Error(
+      'TELEGRAM_BOT_TOKEN is missing.'
+    );
+  }
 
+  const requesterId =
+    joinRequest.from.id;
+
+  const usedInviteLink =
+    joinRequest.invite_link
+      ?.invite_link ??
+    null;
+
+  /*
+   * پیدا کردن خریدی که لینک برای آن بوده
+   */
+  const linkedPurchase =
+    usedInviteLink
+      ? await getPurchaseByInviteLink(
+          db,
+          usedInviteLink
+        )
+      : null;
+
+  /*
+   * پیدا کردن اشتراک خود شخص
+   */
+  const activeRequesterPurchase =
+    await getActivePurchaseByTelegramId(
+      db,
+      requesterId
+    );
+
+  const activeBuyer =
+    await getActiveCourseBuyer(
+      db,
+      requesterId
+    );
+
+  /*
+   * آیا لینک واقعاً برای همین Telegram ID است؟
+   */
   const validLinkedPurchase =
     linkedPurchase &&
-    Number(linkedPurchase.telegram_id) === Number(requesterId) &&
-    linkedPurchase.status === 'approved' &&
-    linkedPurchase.access_status === 'active' &&
-    isNotExpired(linkedPurchase.expires_at);
+    Number(
+      linkedPurchase.telegram_id
+    ) ===
+      Number(requesterId) &&
 
-  if (validLinkedPurchase) {
-    await approveChatJoinRequest(botToken, channelId, requesterId);
-    await markPurchaseJoined(db, linkedPurchase.id);
+    linkedPurchase.status ===
+      'approved' &&
+
+    linkedPurchase.access_status ===
+      'active' &&
+
+    isNotExpired(
+      linkedPurchase.expires_at
+    );
+
+  /*
+   * مالک اصلی لینک
+   */
+  if (
+    validLinkedPurchase
+  ) {
+    await approveChatJoinRequest(
+      botToken,
+      channelId,
+      requesterId
+    );
+
+    await markPurchaseJoined(
+      db,
+      linkedPurchase.id
+    );
 
     try {
-      await revokeChatInviteLink(botToken, channelId, usedInviteLink);
+      await revokeChatInviteLink(
+        botToken,
+        channelId,
+        usedInviteLink
+      );
     } catch (error) {
-      console.warn('Could not revoke consumed invite link:', error.message);
+      console.warn(
+        'Could not revoke consumed invite:',
+        error.message
+      );
     }
 
-    await clearPurchaseInviteLink(db, linkedPurchase.id);
+    await clearPurchaseInviteLink(
+      db,
+      linkedPurchase.id
+    );
 
     try {
       await sendMessage(
         botToken,
         requesterId,
+
         `✅ <b>عضویت شما با موفقیت تأیید شد.</b>\n\n` +
-        `دسترسی شما به کانال خصوصی فعال است.`,
+        `دسترسی شما به کانال خصوصی فعال است.\n\n` +
+        `لطفاً لینک اختصاصی خود را با دیگران به اشتراک نگذارید.`
       );
     } catch (error) {
-      console.warn('Join approval notification failed:', error.message);
+      console.warn(
+        'Join confirmation failed:',
+        error.message
+      );
     }
 
     return;
   }
 
-  await declineChatJoinRequest(botToken, channelId, requesterId);
+  /*
+   * شخص دیگری با لینک علی آمده
+   */
+  try {
+    await declineChatJoinRequest(
+      botToken,
+      channelId,
+      requesterId
+    );
+  } catch (error) {
+    console.warn(
+      'Could not decline join request:',
+      error.message
+    );
+  }
 
-  if (usedInviteLink && linkedPurchase) {
+  if (
+    usedInviteLink &&
+    linkedPurchase
+  ) {
     try {
-      await revokeChatInviteLink(botToken, channelId, usedInviteLink);
+      await revokeChatInviteLink(
+        botToken,
+        channelId,
+        usedInviteLink
+      );
     } catch (error) {
-      console.warn('Could not revoke unauthorized invite link:', error.message);
+      console.warn(
+        'Could not revoke unauthorized invite:',
+        error.message
+      );
     }
   }
 
-  if (activeRequesterPurchase || activeBuyer) {
-    const purchase = activeRequesterPurchase || await getActivePurchaseByTelegramId(db, requesterId);
+  /*
+   * اگر شخص خودش اشتراک دارد،
+   * لینک خودش را برایش بساز.
+   */
+  if (
+    activeRequesterPurchase ||
+    activeBuyer
+  ) {
+    const ownPurchase =
+      activeRequesterPurchase;
 
-    try {
-      await sendAccessLink(
-        db,
-        env,
-        purchase,
-        'این لینک برای حساب دیگری صادر شده بود و قابل استفاده برای شما نیست. لینک اختصاصی جدید برای حساب خودتان ایجاد شد.',
-      );
-    } catch (error) {
-      console.error('Could not send replacement invite:', error.message);
+    if (ownPurchase) {
+      try {
+        await sendAccessLink(
+          db,
+          env,
+          ownPurchase,
+
+          `این لینک برای حساب دیگری صادر شده بود و قابل استفاده برای شما نیست. لینک اختصاصی جدید مخصوص حساب خودتان ایجاد شد.`
+        );
+      } catch (error) {
+        console.error(
+          'Could not send replacement invite:',
+          error.message
+        );
+      }
     }
+
     return;
   }
 
+  /*
+   * شخص اشتراک ندارد
+   */
   try {
     await sendMessage(
       botToken,
-      joinRequest.user_chat_id ?? requesterId,
+
+      joinRequest.user_chat_id ??
+        requesterId,
+
       `⛔ <b>این لینک برای حساب دیگری صادر شده است.</b>\n\n` +
-      `هر اشتراک فقط برای همان حساب Telegram فعال می‌شود و امکان استفاده از لینک دیگران وجود ندارد.`,
+
+      `اشتراک‌ها فقط برای همان حساب Telegram که خرید را انجام داده فعال می‌شوند.\n\n` +
+
+      `برای تهیه اشتراک، از منوی ربات اقدام کنید.`
     );
   } catch (error) {
-    console.warn('Unauthorized join notification failed:', error.message);
+    console.warn(
+      'Unauthorized join notification failed:',
+      error.message
+    );
   }
 }
 
-export async function expireCourses(db, env) {
-  const botToken = env?.TELEGRAM_BOT_TOKEN;
-  if (!botToken || !db) return;
+/**
+ * بررسی اشتراک‌های منقضی
+ */
+export async function expireCourses(
+  db,
+  env
+) {
+  const botToken =
+    env?.TELEGRAM_BOT_TOKEN;
 
-  const channelId = getChannelId(env);
-  const expiredPurchases = await getExpiredPurchases(db);
+  if (
+    !botToken ||
+    !db
+  ) {
+    return;
+  }
 
-  for (const purchase of expiredPurchases) {
+  const channelId =
+    getChannelId(env);
+
+  const expiredPurchases =
+    await getExpiredPurchases(
+      db
+    );
+
+  for (
+    const purchase of
+    expiredPurchases
+  ) {
     try {
-      if (purchase.invite_link) {
+      /*
+       * لینک را باطل کن
+       */
+      if (
+        purchase.invite_link
+      ) {
         try {
-          await revokeChatInviteLink(botToken, channelId, purchase.invite_link);
+          await revokeChatInviteLink(
+            botToken,
+            channelId,
+            purchase.invite_link
+          );
         } catch (error) {
-          console.warn(`Could not revoke expired link ${purchase.id}:`, error.message);
+          console.warn(
+            `Could not revoke expired invite ${purchase.id}:`,
+            error.message
+          );
         }
       }
 
-      // Telegram's unbanChatMember removes an existing member while allowing
-      // the user to join again later through a new invite link.
+      /*
+       * خارج کردن کاربر
+       */
       try {
-        await unbanChatMember(botToken, channelId, purchase.telegram_id);
+        await unbanChatMember(
+          botToken,
+          channelId,
+          purchase.telegram_id
+        );
       } catch (error) {
-        console.warn(`Could not remove Telegram user ${purchase.telegram_id}:`, error.message);
+        console.warn(
+          `Could not remove ${purchase.telegram_id}:`,
+          error.message
+        );
       }
 
-      await markPurchaseExpired(db, purchase.id);
-      await deactivateCourseBuyer(db, purchase.telegram_id);
+      /*
+       * تغییر وضعیت DB
+       */
+      await markPurchaseExpired(
+        db,
+        purchase.id
+      );
 
+      await deactivateCourseBuyer(
+        db,
+        purchase.telegram_id
+      );
+
+      /*
+       * اطلاع‌رسانی
+       */
       try {
         await sendMessage(
           botToken,
+
           purchase.telegram_id,
+
           `⏳ <b>اشتراک شما به پایان رسید</b>\n\n` +
+
           `با عرض پوزش، مدت اشتراک شما به پایان رسیده و دسترسی شما به کانال خصوصی حذف شد.\n\n` +
-          `برای فعال‌سازی مجدد، می‌توانید از منوی زیر اشتراک جدید تهیه کنید.`,
+
+          `برای فعال‌سازی مجدد، می‌توانید از منوی زیر اشتراک جدید تهیه کنید.`
         );
       } catch (error) {
-        console.warn(`Could not notify expired user ${purchase.telegram_id}:`, error.message);
+        console.warn(
+          `Could not notify ${purchase.telegram_id}:`,
+          error.message
+        );
       }
     } catch (error) {
-      console.error(`Failed to expire purchase ${purchase.id}:`, error.message);
+      console.error(
+        `Failed to expire purchase ${purchase.id}:`,
+        error.message,
+        error.stack
+      );
     }
   }
 }
