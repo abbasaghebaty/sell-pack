@@ -740,17 +740,6 @@ export default async function handleMessage(
   /*
    * Direct course purchase
    */
-  if (
-    text ===
-    COURSE_MENU_BUTTONS.BUY_DIRECT
-  ) {
-    return await startDirectCoursePurchase(
-      message,
-      env,
-      db
-    );
-  }
-
   /*
    * Earn money
    */
