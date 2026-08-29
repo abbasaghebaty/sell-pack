@@ -1,5 +1,8 @@
 /**
  * Course subscription plans
+ *
+ * مسیر:
+ * src/config/coursePlans.js
  */
 
 export const COURSE_PLANS = Object.freeze({
@@ -53,9 +56,11 @@ export const COURSE_PLAN_LIST = Object.freeze([
 ]);
 
 export function getCoursePlan(code) {
-  return COURSE_PLAN_LIST.find(
-    (plan) => plan.code === code
-  ) ?? null;
+  return (
+    COURSE_PLAN_LIST.find(
+      (plan) => plan.code === code
+    ) ?? null
+  );
 }
 
 export function formatToman(amount) {
