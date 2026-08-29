@@ -4,6 +4,11 @@
  * کاملاً هماهنگ با D1 فعلی
  */
 
+import { PAYMENT_CONFIG } from '../config/payment.js';
+
+const PENDING_INVOICE_TTL_MS =
+  Number(PAYMENT_CONFIG.PENDING_INVOICE_TTL_MINUTES) * 60 * 1000;
+
 export async function getUserByTelegramId(
   db,
   telegramId
@@ -119,63 +124,71 @@ export async function getPurchaseByInviteLink(
     .first();
 }
 
+/**
+ * فقط یک فاکتور پرداخت‌نشده برای هر کاربر و هر پلن
+ * می‌تواند همزمان معتبر باشد.
+ *
+ * اعتبار داخلی فاکتور دقیقاً ۲۰ دقیقه است.
+ * بعد از آن رکورد cancel می‌شود تا دیگر جلوی ساخت
+ * فاکتور جدید را نگیرد.
+ */
 export async function getPendingBlupalPurchase(
   db,
-  userId
+  userId,
+  coursePlan
 ) {
+  const planCode = String(
+    coursePlan ?? ''
+  ).trim();
+
+  if (!planCode) {
+    return null;
+  }
+
   const purchase =
     await db
       .prepare(`
         SELECT *
         FROM course_purchases
         WHERE user_id = ?
+          AND course_plan = ?
           AND status = 'waiting_payment'
           AND blupal_invoice_id IS NOT NULL
           AND blupal_final_amount IS NOT NULL
         ORDER BY id DESC
         LIMIT 1
       `)
-      .bind(userId)
+      .bind(
+        userId,
+        planCode
+      )
       .first();
 
   if (!purchase) {
     return null;
   }
 
+  const expiry = purchase.blupal_expires_at
+    ? new Date(
+        purchase.blupal_expires_at
+      ).getTime()
+    : NaN;
+
   /*
-   * فاکتور منقضی شده را دیگر pending حساب نکن.
+   * اگر فاکتور منقضی شده، همان لحظه pending نباشد.
+   * نگه‌داشتن رکورد به صورت canceled مهم است تا
+   * وبهوک دیررس هم بتواند بفهمد این فاکتور معتبر نیست.
    */
   if (
-    purchase.blupal_expires_at
+    !Number.isFinite(expiry) ||
+    expiry <= Date.now()
   ) {
-    const expiry =
-      new Date(
-        purchase.blupal_expires_at
-      ).getTime();
+    await cancelWaitingPurchase(
+      db,
+      purchase.id
+    );
 
-    if (
-      Number.isFinite(
-        expiry
-      ) &&
-      expiry <= Date.now()
-    ) {
-      await db
-        .prepare(`
-          UPDATE course_purchases
-          SET
-            status = 'canceled',
-            access_status = 'inactive',
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-            AND status = 'waiting_payment'
-        `)
-        .bind(
-          purchase.id
-        )
-        .run();
-
-      return null;
-    }
+    return null;
   }
 
   return purchase;
@@ -349,6 +362,38 @@ export async function attachBlupalInvoice(
     );
   }
 
+  /*
+   * عمر فاکتور در سیستم ما حداکثر ۲۰ دقیقه است.
+   *
+   * اگر خود Blupal زودتر منقضی شود، زمان کوتاه‌تر
+   * حفظ می‌شود؛ در نتیجه هیچ‌وقت بیشتر از ۲۰ دقیقه
+   * معتبر نمی‌ماند.
+   */
+  const localExpiry =
+    Date.now() +
+    PENDING_INVOICE_TTL_MS;
+
+  const providerExpiry =
+    invoice.expires_at
+      ? new Date(
+          invoice.expires_at
+        ).getTime()
+      : NaN;
+
+  const effectiveExpiry =
+    Number.isFinite(
+      providerExpiry
+    )
+      ? new Date(
+          Math.min(
+            localExpiry,
+            providerExpiry
+          )
+        ).toISOString()
+      : new Date(
+          localExpiry
+        ).toISOString();
+
   const result =
     await db
       .prepare(`
@@ -372,8 +417,7 @@ export async function attachBlupalInvoice(
         invoice.payment_link ??
           null,
 
-        invoice.expires_at ??
-          null,
+        effectiveExpiry,
 
         invoice.mode ??
           null,
