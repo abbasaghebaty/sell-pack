@@ -92,7 +92,14 @@ export async function handleBlupalWebhook(request, env, db) {
 
   let activated;
   try {
-    activated = await activateCoursePurchase(db, env, approvedPurchase);
+    if (wasAlreadyApproved && existingPurchase.invite_link) {
+      activated = {
+        purchase: existingPurchase,
+        inviteLink: existingPurchase.invite_link,
+      };
+    } else {
+      activated = await activateCoursePurchase(db, env, approvedPurchase);
+    }
   } catch (error) {
     console.error(`Course activation failed for purchase ${approvedPurchase.id}:`, error.message, error.stack);
     return Response.json({ error: 'Payment approved but course activation failed' }, { status: 500 });
@@ -104,13 +111,13 @@ export async function handleBlupalWebhook(request, env, db) {
         ? new Date(activated.purchase.expires_at).toLocaleString('fa-IR')
         : 'بدون تاریخ انقضا';
 
-      const planTitle = activated.purchase.plan_code === '7d'
+      const planTitle = activated.purchase.course_plan === '7d'
         ? '۷ روز'
-        : activated.purchase.plan_code === '30d'
+        : activated.purchase.course_plan === '30d'
           ? '۳۰ روز'
-          : activated.purchase.plan_code === '90d'
+          : activated.purchase.course_plan === '90d'
             ? '۹۰ روز'
-            : activated.purchase.plan_code === '180d'
+            : activated.purchase.course_plan === '180d'
               ? '۱۸۰ روز'
               : 'دائمی';
 

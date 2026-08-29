@@ -81,10 +81,10 @@ export async function issueFreshInviteLink(db, env, purchase) {
 }
 
 export async function activateCoursePurchase(db, env, purchase) {
-  const plan = getCoursePlan(purchase.plan_code);
+  const plan = getCoursePlan(purchase.course_plan);
 
-  if (!plan && purchase.plan_code !== 'legacy') {
-    throw new Error(`Unknown course plan: ${purchase.plan_code}`);
+  if (!plan && purchase.course_plan !== 'legacy') {
+    throw new Error(`Unknown course plan: ${purchase.course_plan}`);
   }
 
   const alreadyActive =
@@ -123,7 +123,7 @@ export async function sendAccessLink(db, env, purchase, extraText = '') {
   const botToken = env?.TELEGRAM_BOT_TOKEN;
   if (!botToken) throw new Error('TELEGRAM_BOT_TOKEN is missing');
 
-  const plan = getCoursePlan(purchase.plan_code);
+  const plan = getCoursePlan(purchase.course_plan);
   const inviteLink = await issueFreshInviteLink(db, env, purchase);
 
   const expiryText = purchase.expires_at
