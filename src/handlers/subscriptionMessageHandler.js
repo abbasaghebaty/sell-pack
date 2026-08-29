@@ -43,6 +43,7 @@ import {
   issueFreshInviteLink,
 } from './courseAccessHandler.js';
 
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(
@@ -67,6 +68,35 @@ function escapeHtml(value) {
     );
 }
 
+
+/*
+ * هر دو متن را پشتیبانی می‌کنیم:
+ *
+ * متن جدید:
+ * 💳 خرید اشتراک
+ *
+ * متن قدیمی:
+ * 💳 خرید مستقیم دوره
+ *
+ * این کار باعث می‌شود Reply Keyboard
+ * قدیمی هم وارد مسیر جدید شود.
+ */
+const OLD_BUY_BUTTON =
+  '💳 خرید مستقیم دوره';
+
+
+function isBuySubscriptionButton(
+  text
+) {
+  return (
+    text ===
+      COURSE_MENU_BUTTONS.BUY_DIRECT ||
+    text ===
+      OLD_BUY_BUTTON
+  );
+}
+
+
 function getPlanTitle(plan) {
   return (
     plan?.title ||
@@ -74,12 +104,14 @@ function getPlanTitle(plan) {
   );
 }
 
+
 async function showPlans(
   message,
   env
 ) {
   return sendMessage(
     env.TELEGRAM_BOT_TOKEN,
+
     message.chat.id,
 
     `💳 <b>انتخاب اشتراک</b>\n\n` +
@@ -97,6 +129,7 @@ async function showPlans(
     getCoursePlansKeyboard()
   );
 }
+
 
 async function sendActiveStatus(
   message,
@@ -133,6 +166,7 @@ async function sendActiveStatus(
 
   return sendMessage(
     env.TELEGRAM_BOT_TOKEN,
+
     message.chat.id,
 
     `✅ <b>اشتراک شما فعال است</b>\n\n` +
@@ -155,6 +189,7 @@ async function sendActiveStatus(
   );
 }
 
+
 async function startSubscriptionPurchase(
   message,
   env,
@@ -171,12 +206,17 @@ async function startSubscriptionPurchase(
     return sendMessage(
       botToken,
       chatId,
+
       '❌ دیتابیس در دسترس نیست.',
+
       getCourseMenuKeyboard()
     );
   }
 
   try {
+    /*
+     * ثبت کاربر
+     */
     const user =
       await ensureUser(
         db,
@@ -189,8 +229,9 @@ async function startSubscriptionPurchase(
       );
     }
 
+
     /*
-     * اگر اشتراک فعال دارد
+     * بررسی اشتراک فعال
      */
     const activePurchase =
       await getActivePurchase(
@@ -207,8 +248,9 @@ async function startSubscriptionPurchase(
       );
     }
 
+
     /*
-     * فاکتور قبلی
+     * بررسی Invoice قبلی
      */
     const pendingPurchase =
       await getPendingBlupalPurchase(
@@ -264,8 +306,14 @@ async function startSubscriptionPurchase(
       );
     }
 
+
     /*
-     * ایجاد خرید
+     * ایجاد Purchase
+     *
+     * بسیار مهم:
+     *
+     * مبلغ از plan می‌آید.
+     * هیچ مبلغ ثابتی اینجا نداریم.
      */
     const purchase =
       await createPurchase(
@@ -274,18 +322,22 @@ async function startSubscriptionPurchase(
         plan
       );
 
+
+    let invoice;
+
     try {
       /*
-       * ساخت فاکتور Blupal
+       * ارسال دقیق مبلغ پلن به Blupal
        */
-      const invoice =
+      invoice =
         await createBlupalInvoice(
           env,
           purchase.rialAmount
         );
 
+
       /*
-       * ذخیره فاکتور
+       * ذخیره Invoice
        */
       await attachBlupalInvoice(
         db,
@@ -293,6 +345,10 @@ async function startSubscriptionPurchase(
         invoice
       );
 
+
+      /*
+       * پیام پرداخت
+       */
       const paymentMessage =
         buildPaymentMessage({
           baseAmountRial:
@@ -318,6 +374,10 @@ async function startSubscriptionPurchase(
             null,
         });
 
+
+      /*
+       * دکمه پرداخت
+       */
       const paymentKeyboard =
         buildPaymentKeyboard({
           finalAmountRial:
@@ -333,6 +393,7 @@ async function startSubscriptionPurchase(
             invoice.card_number ??
             null,
         });
+
 
       return sendMessage(
         botToken,
@@ -350,7 +411,13 @@ async function startSubscriptionPurchase(
 
         paymentKeyboard
       );
+
     } catch (error) {
+
+      /*
+       * اگر ساخت Invoice شکست خورد،
+       * Purchase ناقص باقی نماند.
+       */
       await cancelWaitingPurchase(
         db,
         purchase.id
@@ -358,7 +425,9 @@ async function startSubscriptionPurchase(
 
       throw error;
     }
+
   } catch (error) {
+
     console.error(
       '❌ Subscription purchase error:',
       error.message,
@@ -370,6 +439,7 @@ async function startSubscriptionPurchase(
       chatId,
 
       `❌ <b>ساخت فاکتور انجام نشد.</b>\n\n` +
+
       `<code>${escapeHtml(
         error.message
       )}</code>`,
@@ -378,6 +448,7 @@ async function startSubscriptionPurchase(
     );
   }
 }
+
 
 export default async function handleSubscriptionMessage(
   message,
@@ -394,18 +465,25 @@ export default async function handleSubscriptionMessage(
   const text =
     message.text?.trim();
 
+
   /*
-   * ورود به صفحه پلن‌ها
+   * هم دکمه جدید
+   * هم دکمه قدیمی
+   *
+   * هیچ‌کدام دیگر خرید 200k
+   * انجام نمی‌دهند.
    */
   if (
-    text ===
-    COURSE_MENU_BUTTONS.BUY_DIRECT
+    isBuySubscriptionButton(
+      text
+    )
   ) {
     return showPlans(
       message,
       env
     );
   }
+
 
   /*
    * انتخاب پلن
@@ -424,8 +502,9 @@ export default async function handleSubscriptionMessage(
     );
   }
 
+
   /*
-   * باقی منطق قدیمی ربات
+   * سایر امکانات ربات
    */
   return handleMessage(
     message,
