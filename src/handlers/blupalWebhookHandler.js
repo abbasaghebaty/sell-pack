@@ -9,6 +9,7 @@ import {
 import {
   approveBlupalPurchase,
   findPurchaseByInvoiceId,
+  cancelWaitingPurchase,
 } from '../database/coursePurchases.js';
 
 import {
@@ -196,6 +197,54 @@ export async function handleBlupalWebhook(
   }
 
   /*
+   * فاکتورهای پرداخت‌نشده فقط ۲۰ دقیقه معتبرند.
+   *
+   * اگر وبهوک بعد از انقضا برسد:
+   * - خرید تأیید نمی‌شود
+   * - رکورد pending به canceled تبدیل می‌شود
+   * - اشتراک فعال نمی‌شود
+   */
+  if (
+    purchase.status ===
+      'waiting_payment'
+  ) {
+    const expiry =
+      purchase.blupal_expires_at
+        ? new Date(
+            purchase.blupal_expires_at
+          ).getTime()
+        : NaN;
+
+    if (
+      !Number.isFinite(
+        expiry
+      ) ||
+      expiry <= Date.now()
+    ) {
+      await cancelWaitingPurchase(
+        db,
+        purchase.id
+      );
+
+      console.warn(
+        `Ignoring expired payment webhook for invoice ${invoiceId}.`
+      );
+
+      return Response.json(
+        {
+          received: true,
+          ignored: true,
+          reason:
+            'invoice_expired',
+        },
+        {
+          status: 200,
+        }
+      );
+    }
+  }
+
+  /*
    * جلوگیری از جعل مبلغ
    */
   if (
@@ -218,6 +267,39 @@ export async function handleBlupalWebhook(
       {
         error:
           'Amount mismatch',
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  /*
+   * مبلغ نهایی نیز باید با مبلغ فاکتور ذخیره‌شده
+   * هماهنگ باشد.
+   */
+  if (
+    purchase.blupal_final_amount !== null &&
+    purchase.blupal_final_amount !== undefined &&
+    Number(
+      purchase.blupal_final_amount
+    ) !== finalAmount
+  ) {
+    console.error(
+      'Webhook final amount mismatch:',
+      {
+        invoiceId,
+        expected:
+          purchase.blupal_final_amount,
+        received:
+          finalAmount,
+      }
+    );
+
+    return Response.json(
+      {
+        error:
+          'Final amount mismatch',
       },
       {
         status: 400,
@@ -274,6 +356,29 @@ export async function handleBlupalWebhook(
       {
         received: true,
         duplicate: true,
+      },
+      {
+        status: 200,
+      }
+    );
+  }
+
+  /*
+   * فقط purchaseهایی که هنوز واقعاً پرداخت‌نشده
+   * هستند باید approve شوند.
+   *
+   * canceled / expired نباید دوباره فعال شوند.
+   */
+  if (
+    purchase.status !==
+      'waiting_payment'
+  ) {
+    return Response.json(
+      {
+        received: true,
+        ignored: true,
+        reason:
+          'purchase_not_pending',
       },
       {
         status: 200,
