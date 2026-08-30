@@ -258,6 +258,29 @@ export async function processPaymentWebhook(
     throw error;
   }
 
+  const walletAmountToman =
+    Math.floor(
+      parsed.finalAmount / 10,
+    );
+
+  if (
+    !Number.isInteger(
+      walletAmountToman,
+    ) ||
+    walletAmountToman <= 0
+  ) {
+    throw new Error(
+      'Invalid wallet payment amount.',
+    );
+  }
+
+  await settleCoursePaymentToWallet(
+    env.WALLET_DB,
+    approvedPurchase.telegram_id,
+    walletAmountToman,
+    parsed.invoiceId,
+  );
+
   const activated =
     await activateCoursePurchase(
       db,
