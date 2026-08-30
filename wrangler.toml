@@ -11,6 +11,11 @@ binding = "DB"
 database_name = "sell-pack"
 database_id = "2a89652a-61ca-4f50-a3ed-02a5e899aa73"
 
+[[d1_databases]]
+binding = "WALLET_DB"
+database_name = "wallet-db"
+database_id = "438a5875-69f8-499c-8adc-1ebcfc3f7b30"
+
 [triggers]
 crons = ["30 20 * * *"]
 
