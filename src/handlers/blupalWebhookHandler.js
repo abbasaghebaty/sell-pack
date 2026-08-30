@@ -1,6 +1,7 @@
 import {
   getWalletTopupByInvoiceId,
-  approveWalletTopup,
+  validateWalletTopupPayment,
+  markWalletTopupPaid,
 } from '../database/walletTopups.js';
 
 import {
@@ -121,8 +122,9 @@ export async function handleBlupalWebhook(
 
   try {
     /*
-     * اول بررسی می‌کنیم این invoice
-     * مربوط به شارژ کیف پول هست یا نه.
+     * ---------------------------------------
+     * Wallet Top-up
+     * ---------------------------------------
      */
 
     const walletTopup =
@@ -132,50 +134,43 @@ export async function handleBlupalWebhook(
       );
 
     if (walletTopup) {
-      const result =
-        await approveWalletTopup(
+      const validation =
+        await validateWalletTopupPayment(
           db,
           parsed.invoiceId,
-          parsed.transactionId,
           parsed.finalAmount,
         );
 
       if (
-        result?.ignoredReason
+        validation?.ignoredReason
       ) {
         return Response.json({
           received: true,
           ignored: true,
           reason:
-            result.ignoredReason,
+            validation.ignoredReason,
         });
       }
 
-      /*
-       * اگر قبلاً پرداخت ثبت شده،
-       * دوباره Wallet را شارژ نکن.
-       */
       if (
-        result?.duplicate
+        validation?.duplicate
       ) {
         return Response.json({
           received: true,
           duplicate: true,
+          wallet_topup: true,
         });
       }
 
       const topup =
-        result?.topup;
-
-      if (!topup) {
-        throw new Error(
-          'Wallet top-up record not found after approval.',
-        );
-      }
+        validation.topup;
 
       /*
-       * فقط مبلغ درخواستی کاربر وارد کیف پول می‌شود،
-       * نه final_amount احتمالی.
+       * اول Wallet را شارژ می‌کنیم.
+       *
+       * اگر credit موفق نشود،
+       * topup هنوز waiting_payment باقی می‌ماند
+       * و webhook بعدی می‌تواند دوباره تلاش کند.
        */
       await creditWallet(
         env.WALLET_DB,
@@ -186,16 +181,36 @@ export async function handleBlupalWebhook(
         {
           type:
             'wallet_topup',
+
           referenceType:
             'wallet_topup',
+
           referenceId:
             String(
               topup.id,
             ),
+
           description:
             'شارژ کیف پول از طریق بلپال',
         },
       );
+
+      /*
+       * فقط بعد از موفقیت Wallet،
+       * topup را paid می‌کنیم.
+       */
+      const markedPaid =
+        await markWalletTopupPaid(
+          db,
+          topup.id,
+          parsed.transactionId,
+        );
+
+      if (!markedPaid) {
+        throw new Error(
+          'Wallet was credited but top-up could not be marked as paid.',
+        );
+      }
 
       try {
         await sendMessage(
@@ -222,8 +237,9 @@ export async function handleBlupalWebhook(
     }
 
     /*
-     * اگر Wallet top-up نبود،
-     * پرداخت عادی دوره را پردازش کن.
+     * ---------------------------------------
+     * Course Purchase
+     * ---------------------------------------
      */
 
     const result =
@@ -244,7 +260,9 @@ export async function handleBlupalWebhook(
       });
     }
 
-    if (result.duplicate) {
+    if (
+      result.duplicate
+    ) {
       return Response.json({
         received: true,
         duplicate: true,
