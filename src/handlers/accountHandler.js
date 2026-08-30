@@ -5,6 +5,7 @@ import {
 
 import {
   getAccountKeyboard,
+  getAccountBackReplyKeyboard,
 } from '../../keyboards/account.js';
 
 import {
@@ -30,6 +31,22 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function normalizeDisplayName(
+  value,
+) {
+  const name =
+    String(value ?? '').trim();
+
+  if (!name) {
+    return 'دوست عزیز';
+  }
+
+  return (
+    name.charAt(0).toUpperCase() +
+    name.slice(1)
+  );
 }
 
 function formatToman(amount) {
@@ -111,20 +128,18 @@ export async function showAccount(
             )
           : 'بدون تاریخ انقضا';
 
-      if (db) {
-        try {
-          inviteLink =
-            await issueFreshInviteLink(
-              db,
-              env,
-              activePurchase,
-            );
-        } catch (error) {
-          console.warn(
-            'Could not create account invite link:',
-            error.message,
+      try {
+        inviteLink =
+          await issueFreshInviteLink(
+            db,
+            env,
+            activePurchase,
           );
-        }
+      } catch (error) {
+        console.warn(
+          'Could not create account invite link:',
+          error.message,
+        );
       }
     }
 
@@ -154,8 +169,14 @@ export async function showAccount(
 
     const fullName =
       [
-        telegramUser.first_name,
-        telegramUser.last_name,
+        normalizeDisplayName(
+          telegramUser.first_name,
+        ),
+        telegramUser.last_name
+          ? normalizeDisplayName(
+              telegramUser.last_name,
+            )
+          : null,
       ]
         .filter(Boolean)
         .join(' ') ||
@@ -192,12 +213,33 @@ export async function showAccount(
         )}">ورود به کانال خصوصی</a>`;
     }
 
-    return sendMessage(
+    /*
+     * پیام اصلی حساب:
+     * فقط دکمه شیشه‌ای شارژ دارد.
+     */
+    const accountMessage =
+      await sendMessage(
+        botToken,
+        message.chat.id,
+        text,
+        getAccountKeyboard(),
+      );
+
+    /*
+     * چون Telegram اجازه نمی‌دهد
+     * ReplyKeyboard و InlineKeyboard
+     * همزمان روی یک پیام باشند،
+     * کیبورد برگشت را با یک پیام کوچک
+     * جدا فعال می‌کنیم.
+     */
+    await sendMessage(
       botToken,
       message.chat.id,
-      text,
-      getAccountKeyboard(),
+      'برای بازگشت از دکمه زیر استفاده کنید.',
+      getAccountBackReplyKeyboard(),
     );
+
+    return accountMessage;
   } catch (error) {
     console.error(
       'Account view error:',
@@ -209,7 +251,7 @@ export async function showAccount(
       botToken,
       message.chat.id,
       '❌ دریافت اطلاعات حساب انجام نشد. لطفاً دوباره تلاش کنید.',
-      getAccountKeyboard(),
+      getAccountBackReplyKeyboard(),
     );
   }
 }
