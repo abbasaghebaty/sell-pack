@@ -1,8 +1,5 @@
 /**
  * Telegram update router.
- *
- * مسئول این فایل فقط تشخیص نوع Update
- * و تحویل آن به handler مناسب است.
  */
 
 import handleCommand from '../handlers/commandHandler.js';
@@ -22,10 +19,6 @@ import {
   cancelWalletTopupFromCallback,
 } from '../handlers/walletTopupHandler.js';
 
-import {
-  showMainMenu,
-} from '../handlers/menuHandler.js';
-
 export async function routeTelegramUpdate(
   update,
   env,
@@ -38,7 +31,9 @@ export async function routeTelegramUpdate(
     return;
   }
 
-  if (update.chat_join_request) {
+  if (
+    update.chat_join_request
+  ) {
     try {
       await handleCourseJoinRequest(
         update.chat_join_request,
@@ -56,7 +51,9 @@ export async function routeTelegramUpdate(
     return;
   }
 
-  if (update.callback_query) {
+  if (
+    update.callback_query
+  ) {
     const callback =
       update.callback_query;
 
@@ -65,46 +62,42 @@ export async function routeTelegramUpdate(
         callback.data ?? '',
       );
 
+    /*
+     * Wallet
+     */
     if (
       data ===
-        'wallet_topup_start' ||
+      'wallet_topup_start'
+    ) {
+      await startWalletTopup(
+        callback,
+        env,
+        db,
+      );
+
+      return;
+    }
+
+    if (
       data ===
         'wallet_topup_cancel_current' ||
       data.startsWith(
         'wallet_topup_cancel:',
       )
     ) {
-      if (
-        data ===
-        'wallet_topup_start'
-      ) {
-        await startWalletTopup(
-          callback,
-          env,
-          db,
-        );
-      } else {
-        await cancelWalletTopupFromCallback(
-          callback,
-          env,
-          db,
-        );
-      }
+      await cancelWalletTopupFromCallback(
+        callback,
+        env,
+        db,
+      );
 
       return;
     }
 
-if (
-  data ===
-  'account_back'
-) {
-  await showMainMenu(
-    callback.message,
-    env,
-  );
-
-  return;
-}
+    /*
+     * سایر callbackها:
+     * admin review
+     */
     await handleAdminApplicationCallback(
       callback,
       env,
@@ -114,7 +107,9 @@ if (
     return;
   }
 
-  if (update.message) {
+  if (
+    update.message
+  ) {
     const message =
       update.message;
 
@@ -153,7 +148,9 @@ if (
     return;
   }
 
-  if (update.edited_message) {
+  if (
+    update.edited_message
+  ) {
     return;
   }
 
