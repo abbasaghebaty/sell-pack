@@ -13,25 +13,20 @@ function validateUserId(
   if (
     telegramUserId === undefined ||
     telegramUserId === null ||
-    String(
-      telegramUserId,
-    ).trim() === ''
+    String(telegramUserId).trim() === ''
   ) {
     throw new Error(
       'Telegram user ID is required.',
     );
   }
 
-  return String(
-    telegramUserId,
-  );
+  return String(telegramUserId);
 }
 
 function validateAmount(
   amount,
 ) {
-  const value =
-    Number(amount);
+  const value = Number(amount);
 
   if (
     !Number.isInteger(value) ||
@@ -56,24 +51,16 @@ function hasUsableReference(
   );
 }
 
-function isDuplicateConstraint(
-  error,
-) {
+function isDuplicateConstraint(error) {
   const message =
     String(
       error?.message || '',
     ).toLowerCase();
 
   return (
-    message.includes(
-      'unique constraint',
-    ) ||
-    message.includes(
-      'constraint failed',
-    ) ||
-    message.includes(
-      'is not unique',
-    )
+    message.includes('unique constraint') ||
+    message.includes('constraint failed') ||
+    message.includes('is not unique')
   );
 }
 
@@ -105,16 +92,10 @@ async function transactionExists(
         LIMIT 1
       `)
       .bind(
-        String(
-          telegramUserId,
-        ),
+        String(telegramUserId),
         type,
-        String(
-          referenceType,
-        ),
-        String(
-          referenceId,
-        ),
+        String(referenceType),
+        String(referenceId),
       )
       .first();
 
@@ -200,8 +181,8 @@ export async function getWalletBalance(
 /**
  * افزایش موجودی
  *
- * اگر reference یکتا وجود داشته باشد،
- * عملیات idempotent است.
+ * عملیات با reference یکتا
+ * در برابر webhook تکراری مقاوم است.
  */
 export async function creditWallet(
   walletDb,
@@ -236,10 +217,6 @@ export async function creditWallet(
       referenceId,
     );
 
-  /*
-   * اگر همین تراکنش قبلاً ثبت شده،
-   * دوباره موجودی اضافه نمی‌کنیم.
-   */
   if (
     hasReference &&
     await transactionExists(
@@ -256,9 +233,6 @@ export async function creditWallet(
     );
   }
 
-  /*
-   * اطمینان از وجود حساب
-   */
   await ensureWalletAccount(
     walletDb,
     userId,
@@ -319,13 +293,6 @@ export async function creditWallet(
       statements,
     );
   } catch (error) {
-    /*
-     * اگر دو webhook همزمان برسند،
-     * unique index اجازه duplicate نمی‌دهد.
-     *
-     * در این حالت اگر تراکنش قبلاً ساخته شده،
-     * عملیات را موفق در نظر می‌گیریم.
-     */
     if (
       hasReference &&
       isDuplicateConstraint(error) &&
@@ -354,9 +321,6 @@ export async function creditWallet(
 
 /**
  * کاهش موجودی
- *
- * اگر reference یکتا وجود داشته باشد،
- * عملیات idempotent است.
  */
 export async function debitWallet(
   walletDb,
@@ -391,9 +355,6 @@ export async function debitWallet(
       referenceId,
     );
 
-  /*
-   * جلوگیری از برداشت دوباره
-   */
   if (
     hasReference &&
     await transactionExists(
@@ -473,22 +434,14 @@ export async function debitWallet(
         statements,
       );
 
-    const updateResult =
-      results?.[0];
-
     if (
-      !updateResult?.meta?.changes
+      !results?.[0]?.meta?.changes
     ) {
       throw new Error(
         'Insufficient wallet balance.',
       );
     }
   } catch (error) {
-    /*
-     * در صورت duplicate همزمان،
-     * اگر ledger قبلاً ساخته شده،
-     * برداشت را دوباره انجام نمی‌دهیم.
-     */
     if (
       hasReference &&
       isDuplicateConstraint(error) &&
@@ -516,17 +469,15 @@ export async function debitWallet(
 }
 
 /**
- * تسویه پرداخت دوره
+ * ثبت پرداخت دوره در Wallet
  *
- * ساختار:
+ * این عملیات به صورت یک batch اتمیک انجام می‌شود:
  *
- * payment_credit  +
- * course_purchase -
+ * + مبلغ پرداخت
+ * - مبلغ خرید دوره
  *
- * هر دو با reference یکتا ثبت می‌شوند.
- *
- * در نتیجه webhook تکراری
- * باعث تغییر دوباره موجودی نمی‌شود.
+ * موجودی نهایی تغییر نمی‌کند،
+ * ولی ledger کامل باقی می‌ماند.
  */
 export async function settleCoursePaymentToWallet(
   walletDb,
@@ -554,14 +505,8 @@ export async function settleCoursePaymentToWallet(
     'course_payment';
 
   const referenceId =
-    String(
-      invoiceId,
-    );
+    String(invoiceId);
 
-  /*
-   * مرحله اول:
-   * ثبت مبلغ پرداخت‌شده
-   */
   const creditExists =
     await transactionExists(
       walletDb,
@@ -571,29 +516,6 @@ export async function settleCoursePaymentToWallet(
       referenceId,
     );
 
-  if (!creditExists) {
-    await creditWallet(
-      walletDb,
-      userId,
-      amount,
-      {
-        type:
-          'payment_credit',
-
-        referenceType,
-
-        referenceId,
-
-        description:
-          'شارژ کیف پول بابت پرداخت دوره',
-      },
-    );
-  }
-
-  /*
-   * مرحله دوم:
-   * پرداخت هزینه دوره از همان Wallet
-   */
   const debitExists =
     await transactionExists(
       walletDb,
@@ -603,7 +525,24 @@ export async function settleCoursePaymentToWallet(
       referenceId,
     );
 
-  if (!debitExists) {
+  if (
+    creditExists &&
+    debitExists
+  ) {
+    return getWalletAccount(
+      walletDb,
+      userId,
+    );
+  }
+
+  /*
+   * اگر نسخه قدیمی فقط یکی از دو تراکنش را
+   * ایجاد کرده باشد، تراکنش ناقص را کامل می‌کنیم.
+   */
+  if (
+    creditExists &&
+    !debitExists
+  ) {
     await debitWallet(
       walletDb,
       userId,
@@ -611,15 +550,171 @@ export async function settleCoursePaymentToWallet(
       {
         type:
           'course_purchase',
-
         referenceType,
-
         referenceId,
-
         description:
           'پرداخت هزینه دوره از کیف پول',
       },
     );
+
+    return getWalletAccount(
+      walletDb,
+      userId,
+    );
+  }
+
+  if (
+    !creditExists &&
+    debitExists
+  ) {
+    await creditWallet(
+      walletDb,
+      userId,
+      amount,
+      {
+        type:
+          'payment_credit',
+        referenceType,
+        referenceId,
+        description:
+          'شارژ کیف پول بابت پرداخت دوره',
+      },
+    );
+
+    return getWalletAccount(
+      walletDb,
+      userId,
+    );
+  }
+
+  await ensureWalletAccount(
+    walletDb,
+    userId,
+  );
+
+  const statements = [
+    walletDb
+      .prepare(`
+        UPDATE wallet_accounts
+        SET
+          balance = balance + ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE telegram_user_id = ?
+      `)
+      .bind(
+        amount,
+        userId,
+      ),
+
+    walletDb
+      .prepare(`
+        INSERT INTO wallet_transactions (
+          telegram_user_id,
+          type,
+          amount,
+          balance_before,
+          balance_after,
+          reference_type,
+          reference_id,
+          description
+        )
+        SELECT
+          telegram_user_id,
+          'payment_credit',
+          ?,
+          balance - ?,
+          balance,
+          ?,
+          ?,
+          ?
+        FROM wallet_accounts
+        WHERE telegram_user_id = ?
+      `)
+      .bind(
+        amount,
+        amount,
+        referenceType,
+        referenceId,
+        'شارژ کیف پول بابت پرداخت دوره',
+        userId,
+      ),
+
+    walletDb
+      .prepare(`
+        UPDATE wallet_accounts
+        SET
+          balance = balance - ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE telegram_user_id = ?
+      `)
+      .bind(
+        amount,
+        userId,
+      ),
+
+    walletDb
+      .prepare(`
+        INSERT INTO wallet_transactions (
+          telegram_user_id,
+          type,
+          amount,
+          balance_before,
+          balance_after,
+          reference_type,
+          reference_id,
+          description
+        )
+        SELECT
+          telegram_user_id,
+          'course_purchase',
+          ?,
+          balance + ?,
+          balance,
+          ?,
+          ?,
+          ?
+        FROM wallet_accounts
+        WHERE telegram_user_id = ?
+      `)
+      .bind(
+        -amount,
+        amount,
+        referenceType,
+        referenceId,
+        'پرداخت هزینه دوره از کیف پول',
+        userId,
+      ),
+  ];
+
+  try {
+    await walletDb.batch(
+      statements,
+    );
+  } catch (error) {
+    if (
+      isDuplicateConstraint(error) &&
+      await transactionExists(
+        walletDb,
+        userId,
+        'payment_credit',
+        referenceType,
+        referenceId,
+      ) &&
+      await transactionExists(
+        walletDb,
+        userId,
+        'course_purchase',
+        referenceType,
+        referenceId,
+      )
+    ) {
+      return getWalletAccount(
+        walletDb,
+        userId,
+      );
+    }
+
+    throw error;
   }
 
   return getWalletAccount(
