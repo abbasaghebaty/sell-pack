@@ -9,13 +9,14 @@
  */
 
 export const USER_STATES = Object.freeze({
-  IDLE: 'idle',
+  IDLE:
+    'idle',
 
   WAITING_FOR_ADMIN_VERIFICATION:
     'waiting_for_admin_verification',
-  
+
   WAITING_FOR_WALLET_TOPUP_AMOUNT:
-  'waiting_for_wallet_topup_amount',
+    'waiting_for_wallet_topup_amount',
 
   WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION:
     'waiting_for_admin_application_confirmation',
@@ -33,31 +34,31 @@ export const USER_STATES = Object.freeze({
     'waiting_for_admin_rejection_reason',
 });
 
-
 export async function getUserState(
   db,
-  telegramId
+  telegramId,
 ) {
   if (!db) {
     throw new Error(
-      'D1 database is not available'
+      'D1 database is not available',
     );
   }
 
-  const result = await db
-    .prepare(`
-      SELECT
-        telegram_id,
-        state,
-        data,
-        created_at,
-        updated_at
-      FROM user_states
-      WHERE telegram_id = ?
-      LIMIT 1
-    `)
-    .bind(telegramId)
-    .first();
+  const result =
+    await db
+      .prepare(`
+        SELECT
+          telegram_id,
+          state,
+          data,
+          created_at,
+          updated_at
+        FROM user_states
+        WHERE telegram_id = ?
+        LIMIT 1
+      `)
+      .bind(telegramId)
+      .first();
 
   if (!result) {
     return null;
@@ -72,11 +73,9 @@ export async function getUserState(
         : {};
   } catch (error) {
     console.error(
-      '❌ Failed to parse user state data:',
-      error.message
+      'Failed to parse user state data:',
+      error.message,
     );
-
-    data = {};
   }
 
   return {
@@ -96,33 +95,29 @@ export async function getUserState(
   };
 }
 
-
 export async function setUserState(
   db,
   telegramId,
   state,
-  data = {}
+  data = {},
 ) {
   if (!db) {
     throw new Error(
-      'D1 database is not available'
+      'D1 database is not available',
     );
   }
 
   if (!telegramId) {
     throw new Error(
-      'Telegram ID is required'
+      'Telegram ID is required',
     );
   }
 
   if (!state) {
     throw new Error(
-      'State is required'
+      'State is required',
     );
   }
-
-  const jsonData =
-    JSON.stringify(data ?? {});
 
   await db
     .prepare(`
@@ -142,7 +137,9 @@ export async function setUserState(
     .bind(
       telegramId,
       state,
-      jsonData
+      JSON.stringify(
+        data ?? {},
+      ),
     )
     .run();
 
@@ -153,34 +150,33 @@ export async function setUserState(
   };
 }
 
-
 export async function updateUserStateData(
   db,
   telegramId,
-  data = {}
+  data = {},
 ) {
   if (!db) {
     throw new Error(
-      'D1 database is not available'
+      'D1 database is not available',
     );
   }
 
   const current =
     await getUserState(
       db,
-      telegramId
+      telegramId,
     );
-
-  const mergedData = {
-    ...(current?.data ?? {}),
-    ...(data ?? {}),
-  };
 
   if (!current) {
     throw new Error(
-      'User state does not exist'
+      'User state does not exist',
     );
   }
+
+  const mergedData = {
+    ...(current.data ?? {}),
+    ...(data ?? {}),
+  };
 
   await db
     .prepare(`
@@ -191,22 +187,25 @@ export async function updateUserStateData(
       WHERE telegram_id = ?
     `)
     .bind(
-      JSON.stringify(mergedData),
-      telegramId
+      JSON.stringify(
+        mergedData,
+      ),
+      telegramId,
     )
     .run();
 
   return {
     telegramId,
-    state: current.state,
-    data: mergedData,
+    state:
+      current.state,
+    data:
+      mergedData,
   };
 }
 
-
 export async function clearUserState(
   db,
-  telegramId
+  telegramId,
 ) {
   if (!db) {
     return;
@@ -221,9 +220,8 @@ export async function clearUserState(
     .run();
 }
 
-
 export async function clearAllUserStates(
-  db
+  db,
 ) {
   if (!db) {
     return;
