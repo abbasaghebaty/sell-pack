@@ -5,39 +5,44 @@
  * keyboards/account.js
  */
 
-export const ACCOUNT_BUTTONS = Object.freeze({
-  TOPUP: '💳 شارژ کیف پول',
-  BACK: '🔙 بازگشت',
-});
+export const ACCOUNT_BUTTONS =
+  Object.freeze({
+    TOPUP:
+      '💳 شارژ کیف پول',
+
+    BACK:
+      '🔙',
+  });
 
 export function getAccountKeyboard() {
   return {
     inline_keyboard: [
       [
         {
-          text: ACCOUNT_BUTTONS.TOPUP,
-          callback_data: 'wallet_topup_start',
-        },
-      ],
-      [
-        {
-          text: ACCOUNT_BUTTONS.BACK,
-          callback_data: 'account_back',
+          text:
+            ACCOUNT_BUTTONS.TOPUP,
+
+          callback_data:
+            'wallet_topup_start',
         },
       ],
     ],
   };
 }
 
-export function getWalletTopupInputKeyboard() {
+export function getAccountBackReplyKeyboard() {
   return {
-    inline_keyboard: [
+    keyboard: [
       [
         {
-          text: '❌ لغو',
-          callback_data: 'wallet_topup_cancel_current',
+          text:
+            ACCOUNT_BUTTONS.BACK,
         },
       ],
     ],
+
+    resize_keyboard: true,
+
+    is_persistent: true,
   };
 }
