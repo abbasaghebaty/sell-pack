@@ -329,3 +329,15 @@ export default {
   unbanChatMember,
   getChatMember,
 };
+
+
+
+export function getMe(
+  botToken,
+) {
+  return telegramRequest(
+    botToken,
+    'getMe',
+    {},
+  );
+}
