@@ -1,27 +1,28 @@
-/**
- * Account Keyboard
- *
- * مسیر:
- * keyboards/account.js
- */
-
 export const ACCOUNT_BUTTONS =
   Object.freeze({
     BACK: '🔙 بازگشت',
+    TOPUP: '💳 شارژ کیف پول',
   });
 
 export function getAccountKeyboard() {
   return {
-    keyboard: [
+    inline_keyboard: [
+      [
+        {
+          text:
+            ACCOUNT_BUTTONS.TOPUP,
+          callback_data:
+            'wallet_topup_start',
+        },
+      ],
       [
         {
           text:
             ACCOUNT_BUTTONS.BACK,
-          style: 'danger',
+          callback_data:
+            'account_back',
         },
       ],
     ],
-    resize_keyboard: true,
-    is_persistent: false,
   };
 }
