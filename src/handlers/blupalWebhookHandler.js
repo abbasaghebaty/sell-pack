@@ -138,6 +138,7 @@ export async function handleBlupalWebhook(
         await validateWalletTopupPayment(
           db,
           parsed.invoiceId,
+          parsed.amount,
           parsed.finalAmount,
         );
 
@@ -166,11 +167,7 @@ export async function handleBlupalWebhook(
         validation.topup;
 
       /*
-       * اول Wallet را شارژ می‌کنیم.
-       *
-       * اگر credit موفق نشود،
-       * topup هنوز waiting_payment باقی می‌ماند
-       * و webhook بعدی می‌تواند دوباره تلاش کند.
+       * فقط همین مبلغ وارد Wallet می‌شود.
        */
       await creditWallet(
         env.WALLET_DB,
@@ -195,18 +192,32 @@ export async function handleBlupalWebhook(
         },
       );
 
-      /*
-       * فقط بعد از موفقیت Wallet،
-       * topup را paid می‌کنیم.
-       */
-      const markedPaid =
+      const markResult =
         await markWalletTopupPaid(
           db,
           topup.id,
           parsed.transactionId,
         );
 
-      if (!markedPaid) {
+      /*
+       * اگر webhook همزمان بوده،
+       * یکی already_paid می‌شود.
+       */
+      if (
+        markResult ===
+        'already_paid'
+      ) {
+        return Response.json({
+          received: true,
+          duplicate: true,
+          wallet_topup: true,
+        });
+      }
+
+      if (
+        markResult !==
+        'updated'
+      ) {
         throw new Error(
           'Wallet was credited but top-up could not be marked as paid.',
         );
