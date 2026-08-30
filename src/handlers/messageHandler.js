@@ -12,6 +12,11 @@ import {
 import {
   COURSE_MENU_BUTTONS,
 } from '../../keyboards/courseMenu.js';
+
+import {
+  showAccount,
+} from './accountHandler.js';
+
 import {
   EARN_MONEY_BUTTONS,
   getAdminApplicationStartKeyboard,
