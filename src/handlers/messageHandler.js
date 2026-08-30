@@ -1,10 +1,10 @@
 /**
  * Message router.
- *
- * این فایل نباید منطق کسب‌وکار یا SQL داشته باشد؛ فقط پیام را به ماژول مناسب می‌فرستد.
  */
 
-import { sendMessage } from '../api/telegram.js';
+import {
+  sendMessage,
+} from '../api/telegram.js';
 
 import {
   MAIN_MENU_BUTTONS,
@@ -16,8 +16,16 @@ import {
 } from '../../keyboards/courseMenu.js';
 
 import {
+  ACCOUNT_BUTTONS,
+} from '../../keyboards/account.js';
+
+import {
   showAccount,
 } from './accountHandler.js';
+
+import {
+  handleWalletTopupAmount,
+} from './walletTopupHandler.js';
 
 import {
   EARN_MONEY_BUTTONS,
@@ -53,12 +61,13 @@ import {
   showSupportMenu,
 } from './menuHandler.js';
 
-const APPLICATION_STATES = new Set([
-  USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
-  USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME,
-  USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME,
-  USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE,
-]);
+const APPLICATION_STATES =
+  new Set([
+    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
+    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME,
+    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME,
+    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE,
+  ]);
 
 async function clearStateSafely(
   db,
@@ -125,9 +134,15 @@ export default async function handleMessage(
     );
   }
 
+  /*
+   * Back عمومی
+   *
+   * هم "🔙"
+   * هم "🔙 بازگشت" قدیمی را قبول می‌کنیم.
+   */
   if (
-    text ===
-    COURSE_MENU_BUTTONS.BACK
+    text === ACCOUNT_BUTTONS.BACK ||
+    text === COURSE_MENU_BUTTONS.BACK
   ) {
     await clearStateSafely(
       db,
@@ -162,7 +177,22 @@ export default async function handleMessage(
     null;
 
   const currentData =
-    userState?.data ?? {};
+    userState?.data ??
+    {};
+
+  /*
+   * Wallet top-up input
+   */
+  if (
+    currentState ===
+    USER_STATES.WAITING_FOR_WALLET_TOPUP_AMOUNT
+  ) {
+    return handleWalletTopupAmount(
+      message,
+      env,
+      db,
+    );
+  }
 
   if (
     currentState ===
