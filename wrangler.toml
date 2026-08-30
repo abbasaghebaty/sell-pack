@@ -12,13 +12,13 @@ database_name = "sell-pack"
 database_id = "2a89652a-61ca-4f50-a3ed-02a5e899aa73"
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["30 20 * * *"]
 
 [env.production]
 vars = { ENVIRONMENT = "production", COURSE_CHANNEL_ID = "-1004412265336" }
 
 [env.production.triggers]
-crons = ["*/5 * * * *"]
+crons = ["30 20 * * *"]
 
 [env.development]
 vars = { ENVIRONMENT = "development", COURSE_CHANNEL_ID = "-1004412265336" }
