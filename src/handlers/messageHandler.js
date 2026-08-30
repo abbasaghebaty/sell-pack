@@ -5,10 +5,12 @@
  */
 
 import { sendMessage } from '../api/telegram.js';
+
 import {
   MAIN_MENU_BUTTONS,
   getMainMenuKeyboard,
 } from '../../keyboards/mainMenu.js';
+
 import {
   COURSE_MENU_BUTTONS,
 } from '../../keyboards/courseMenu.js';
@@ -22,23 +24,28 @@ import {
   getAdminApplicationStartKeyboard,
   getEarnMoneyKeyboard,
 } from '../../keyboards/earnMoney.js';
+
 import {
   USER_STATES,
   setUserState,
   getUserState,
   clearUserState,
 } from '../database/userStates.js';
+
 import {
   startAdminApplication,
   handleAdminApplication,
 } from './adminApplicationHandler.js';
+
 import {
   handleAdminRejectionReason,
 } from './adminApplicationReviewHandler.js';
+
 import {
   startAdminVerification,
   handleAdminVerificationInput,
 } from './adminVerificationHandler.js';
+
 import {
   showMainMenu,
   showCourseMenu,
@@ -53,58 +60,140 @@ const APPLICATION_STATES = new Set([
   USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE,
 ]);
 
-async function clearStateSafely(db, telegramId) {
+async function clearStateSafely(
+  db,
+  telegramId,
+) {
   if (!db) return;
+
   try {
-    await clearUserState(db, telegramId);
+    await clearUserState(
+      db,
+      telegramId,
+    );
   } catch (error) {
-    console.error('Failed to clear state:', error.message);
+    console.error(
+      'Failed to clear state:',
+      error.message,
+    );
   }
 }
 
-export default async function handleMessage(message, env, db) {
-  if (!message?.chat || !message?.from) return;
-
-  const botToken = env?.TELEGRAM_BOT_TOKEN;
-  const chatId = message.chat.id;
-  const userId = message.from.id;
-  const text = message.text?.trim();
-
-  if (!botToken) {
-    console.error('TELEGRAM_BOT_TOKEN missing');
+export default async function handleMessage(
+  message,
+  env,
+  db,
+) {
+  if (
+    !message?.chat ||
+    !message?.from
+  ) {
     return;
   }
 
-  if (text === '/start' || text?.startsWith('/start ')) {
-    await clearStateSafely(db, userId);
-    return showMainMenu(message, env);
+  const botToken =
+    env?.TELEGRAM_BOT_TOKEN;
+
+  const chatId =
+    message.chat.id;
+
+  const userId =
+    message.from.id;
+
+  const text =
+    message.text?.trim();
+
+  if (!botToken) {
+    console.error(
+      'TELEGRAM_BOT_TOKEN missing',
+    );
+    return;
   }
 
-  if (text === COURSE_MENU_BUTTONS.BACK) {
-    await clearStateSafely(db, userId);
-    return showMainMenu(message, env);
+  if (
+    text === '/start' ||
+    text?.startsWith('/start ')
+  ) {
+    await clearStateSafely(
+      db,
+      userId,
+    );
+
+    return showMainMenu(
+      message,
+      env,
+    );
+  }
+
+  if (
+    text ===
+    COURSE_MENU_BUTTONS.BACK
+  ) {
+    await clearStateSafely(
+      db,
+      userId,
+    );
+
+    return showMainMenu(
+      message,
+      env,
+    );
   }
 
   let userState = null;
+
   if (db) {
     try {
-      userState = await getUserState(db, userId);
+      userState =
+        await getUserState(
+          db,
+          userId,
+        );
     } catch (error) {
-      console.error('Failed to read user state:', error.message);
+      console.error(
+        'Failed to read user state:',
+        error.message,
+      );
     }
   }
 
-  const currentState = userState?.state ?? null;
-  const currentData = userState?.data ?? {};
+  const currentState =
+    userState?.state ??
+    null;
 
-  if (currentState === USER_STATES.WAITING_FOR_ADMIN_REJECTION_REASON) {
-    return handleAdminRejectionReason(message, env, db, userState);
+  const currentData =
+    userState?.data ?? {};
+
+  if (
+    currentState ===
+    USER_STATES.WAITING_FOR_ADMIN_REJECTION_REASON
+  ) {
+    return handleAdminRejectionReason(
+      message,
+      env,
+      db,
+      userState,
+    );
   }
 
-  if (APPLICATION_STATES.has(currentState)) {
-    if (currentState === USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION) {
-      if (text === EARN_MONEY_BUTTONS.COURSE_PURCHASED) {
-        return startAdminApplication(message, env, db);
+  if (
+    APPLICATION_STATES.has(
+      currentState,
+    )
+  ) {
+    if (
+      currentState ===
+      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION
+    ) {
+      if (
+        text ===
+        EARN_MONEY_BUTTONS.COURSE_PURCHASED
+      ) {
+        return startAdminApplication(
+          message,
+          env,
+          db,
+        );
       }
 
       return sendMessage(
@@ -115,26 +204,72 @@ export default async function handleMessage(message, env, db) {
       );
     }
 
-    return handleAdminApplication(message, env, db, currentState, currentData);
+    return handleAdminApplication(
+      message,
+      env,
+      db,
+      currentState,
+      currentData,
+    );
   }
 
-  if (currentState === USER_STATES.WAITING_FOR_ADMIN_VERIFICATION) {
-    return handleAdminVerificationInput(message, env, db);
+  if (
+    currentState ===
+    USER_STATES.WAITING_FOR_ADMIN_VERIFICATION
+  ) {
+    return handleAdminVerificationInput(
+      message,
+      env,
+      db,
+    );
   }
 
-  if (text === MAIN_MENU_BUTTONS.BUY_COURSE) {
-    return showCourseMenu(message, env);
+  if (
+    text ===
+    MAIN_MENU_BUTTONS.BUY_COURSE
+  ) {
+    return showCourseMenu(
+      message,
+      env,
+    );
   }
 
-  if (text === COURSE_MENU_BUTTONS.VERIFY_ADMIN) {
-    return startAdminVerification(message, env, db);
+  if (
+    text ===
+    COURSE_MENU_BUTTONS.VERIFY_ADMIN
+  ) {
+    return startAdminVerification(
+      message,
+      env,
+      db,
+    );
   }
 
-  if (text === MAIN_MENU_BUTTONS.EARN_MONEY) {
-    return showEarnMoneyMenu(message, env);
+  if (
+    text ===
+    MAIN_MENU_BUTTONS.EARN_MONEY
+  ) {
+    return showEarnMoneyMenu(
+      message,
+      env,
+    );
   }
 
-  if (text === EARN_MONEY_BUTTONS.APPLY_ADMIN) {
+  if (
+    text ===
+    MAIN_MENU_BUTTONS.ACCOUNT
+  ) {
+    return showAccount(
+      message,
+      env,
+      db,
+    );
+  }
+
+  if (
+    text ===
+    EARN_MONEY_BUTTONS.APPLY_ADMIN
+  ) {
     if (!db) {
       return sendMessage(
         botToken,
@@ -152,7 +287,11 @@ export default async function handleMessage(message, env, db) {
         {},
       );
     } catch (error) {
-      console.error('Failed to save application state:', error.message);
+      console.error(
+        'Failed to save application state:',
+        error.message,
+      );
+
       return sendMessage(
         botToken,
         chatId,
@@ -171,8 +310,14 @@ export default async function handleMessage(message, env, db) {
     );
   }
 
-  if (text === MAIN_MENU_BUTTONS.SUPPORT) {
-    return showSupportMenu(message, env);
+  if (
+    text ===
+    MAIN_MENU_BUTTONS.SUPPORT
+  ) {
+    return showSupportMenu(
+      message,
+      env,
+    );
   }
 
   return sendMessage(
