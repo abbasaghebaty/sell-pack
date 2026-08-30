@@ -1,4 +1,13 @@
 import {
+  getWalletTopupByInvoiceId,
+  approveWalletTopup,
+} from '../database/walletTopups.js';
+
+import {
+  creditWallet,
+} from '../services/walletService.js';
+
+import {
   sendMessage,
 } from '../api/telegram.js';
 
