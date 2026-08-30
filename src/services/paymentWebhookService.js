@@ -12,6 +12,10 @@ import {
   getCoursePlan,
 } from '../config/coursePlans.js';
 
+import {
+  settleCoursePaymentToWallet,
+} from './walletService.js';
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
