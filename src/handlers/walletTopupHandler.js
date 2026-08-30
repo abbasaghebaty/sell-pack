@@ -1,5 +1,6 @@
 import {
   sendMessage,
+  editMessageText,
   answerCallbackQuery,
 } from '../api/telegram.js';
 
@@ -11,6 +12,7 @@ import {
   USER_STATES,
   setUserState,
   clearUserState,
+  getUserState,
 } from '../database/userStates.js';
 
 import {
@@ -21,33 +23,50 @@ import {
 } from '../database/walletTopups.js';
 
 import {
-  getAccountKeyboard,
+  getAccountBackReplyKeyboard,
 } from '../../keyboards/account.js';
 
 import {
   createCancelTopupKeyboard,
 } from '../../keyboards/walletTopup.js';
 
-const MIN_TOPUP_TOMAN = 10_000;
-const MAX_TOPUP_TOMAN = 50_000_000;
+const MIN_TOPUP_TOMAN =
+  10_000;
+
+const MAX_TOPUP_TOMAN =
+  50_000_000;
 
 function parseAmount(value) {
-  const normalized = String(value ?? '')
-    .replace(/[,٬\u066C]/g, '')
-    .replace(/[۰-۹]/g, (digit) =>
-      String(
-        '۰۱۲۳۴۵۶۷۸۹'.indexOf(digit),
-      ),
-    )
-    .trim();
+  const normalized =
+    String(value ?? '')
+      .replace(/[,٬\u066C]/g, '')
+      .replace(
+        /[۰-۹]/g,
+        (digit) =>
+          String(
+            '۰۱۲۳۴۵۶۷۸۹'.indexOf(
+              digit,
+            ),
+          ),
+      )
+      .trim();
 
-  if (!/^\d+$/.test(normalized)) {
+  if (
+    !/^\d+$/.test(
+      normalized,
+    )
+  ) {
     return null;
   }
 
-  const amount = Number(normalized);
+  const amount =
+    Number(normalized);
 
-  if (!Number.isSafeInteger(amount)) {
+  if (
+    !Number.isSafeInteger(
+      amount,
+    )
+  ) {
     return null;
   }
 
@@ -93,6 +112,11 @@ export async function startWalletTopup(
   const chatId =
     getChatId(source);
 
+  const sourceMessageId =
+    source?.message_id ??
+    source?.message?.message_id ??
+    null;
+
   if (
     !botToken ||
     !userId ||
@@ -106,15 +130,22 @@ export async function startWalletTopup(
       botToken,
       chatId,
       '❌ دیتابیس در دسترس نیست.',
-      getAccountKeyboard(),
+      getAccountBackReplyKeyboard(),
     );
   }
 
+  /*
+   * اطلاعات پیام اصلی حساب را
+   * برای ویرایش‌های بعدی ذخیره می‌کنیم.
+   */
   await setUserState(
     db,
     userId,
     USER_STATES.WAITING_FOR_WALLET_TOPUP_AMOUNT,
-    {},
+    {
+      promptMessageId:
+        sourceMessageId,
+    },
   );
 
   if (source?.id) {
@@ -124,14 +155,65 @@ export async function startWalletTopup(
     );
   }
 
+  const promptText =
+    `💳 <b>شارژ کیف پول</b>\n\n` +
+    `مبلغی که می‌خواهید کیف پولتان را شارژ کنید، به تومان و <b>بدون سه صفر</b> وارد کنید.\n\n` +
+    `مثلاً برای شارژ <b>۲۰,۰۰۰ تومان</b> فقط بنویسید:\n\n` +
+    `<code>20</code>\n\n` +
+    `حداقل مبلغ شارژ: <b>۱۰,۰۰۰ تومان</b>`;
+
+  /*
+   * خود پیام حساب را ویرایش می‌کنیم.
+   */
+  if (sourceMessageId) {
+    await editMessageText(
+      botToken,
+      chatId,
+      sourceMessageId,
+      promptText,
+      createCancelTopupKeyboard(),
+    );
+  } else {
+    await sendMessage(
+      botToken,
+      chatId,
+      promptText,
+      createCancelTopupKeyboard(),
+    );
+  }
+
+  /*
+   * Reply Keyboard فقط یک دکمه:
+   * 🔙
+   */
   return sendMessage(
     botToken,
     chatId,
-    `💳 <b>شارژ کیف پول</b>\n\n` +
-      `مبلغی که می‌خواهید کیف پولتان را شارژ کنید، به تومان و <b>بدون سه صفر</b> وارد کنید.\n\n` +
-      `مثلاً برای شارژ <b>۲۰,۰۰۰ تومان</b> فقط بنویسید:\n\n` +
-      `<code>20</code>\n\n` +
-      `حداقل مبلغ شارژ: <b>۱۰,۰۰۰ تومان</b>`,
+    'مبلغ را ارسال کنید.',
+    getAccountBackReplyKeyboard(),
+  );
+}
+
+async function editPrompt(
+  botToken,
+  chatId,
+  promptMessageId,
+  text,
+) {
+  if (!promptMessageId) {
+    return sendMessage(
+      botToken,
+      chatId,
+      text,
+      createCancelTopupKeyboard(),
+    );
+  }
+
+  return editMessageText(
+    botToken,
+    chatId,
+    promptMessageId,
+    text,
     createCancelTopupKeyboard(),
   );
 }
@@ -144,35 +226,53 @@ export async function handleWalletTopupAmount(
   const botToken =
     env?.TELEGRAM_BOT_TOKEN;
 
+  const state =
+    await getUserState(
+      db,
+      message.from.id,
+    );
+
+  const promptMessageId =
+    state?.data?.promptMessageId ??
+    null;
+
   const amount =
-    parseAmount(message?.text);
+    parseAmount(
+      message?.text,
+    );
 
   if (!amount) {
-    return sendMessage(
+    return editPrompt(
       botToken,
       message.chat.id,
-      `❌ مبلغ واردشده معتبر نیست.\n\n` +
-        `مثلاً برای <b>۲۰,۰۰۰ تومان</b> فقط بنویسید:\n` +
+      promptMessageId,
+      `❌ <b>مبلغ واردشده معتبر نیست.</b>\n\n` +
+        `برای ۲۰,۰۰۰ تومان فقط بنویسید:\n\n` +
         `<code>20</code>`,
-      createCancelTopupKeyboard(),
     );
   }
 
-  if (amount < MIN_TOPUP_TOMAN) {
-    return sendMessage(
+  if (
+    amount <
+    MIN_TOPUP_TOMAN
+  ) {
+    return editPrompt(
       botToken,
       message.chat.id,
+      promptMessageId,
       `❌ حداقل مبلغ شارژ <b>۱۰,۰۰۰ تومان</b> است.`,
-      createCancelTopupKeyboard(),
     );
   }
 
-  if (amount > MAX_TOPUP_TOMAN) {
-    return sendMessage(
+  if (
+    amount >
+    MAX_TOPUP_TOMAN
+  ) {
+    return editPrompt(
       botToken,
       message.chat.id,
+      promptMessageId,
       `❌ حداکثر مبلغ هر شارژ <b>۵۰,۰۰۰,۰۰۰ تومان</b> است.`,
-      createCancelTopupKeyboard(),
     );
   }
 
@@ -221,42 +321,67 @@ export async function handleWalletTopupAmount(
 
     const paymentRows = [];
 
-    if (invoice.payment_link) {
+    if (
+      invoice.payment_link
+    ) {
       paymentRows.push([
         {
-          text: '💳 پرداخت فاکتور',
-          url: invoice.payment_link,
+          text:
+            '💳 پرداخت فاکتور',
+          url:
+            invoice.payment_link,
         },
       ]);
     }
 
     paymentRows.push([
       {
-        text: '❌ لغو فاکتور',
+        text:
+          '❌ لغو فاکتور',
         callback_data:
           `wallet_topup_cancel:${topup.id}`,
       },
     ]);
 
+    const invoiceText =
+      `💳 <b>فاکتور شارژ کیف پول</b>\n\n` +
+      `مبلغ شارژ: <b>${amount.toLocaleString(
+        'fa-IR',
+      )} تومان</b>\n` +
+      `مبلغ قابل پرداخت: <b>${Math.floor(
+        invoice.final_amount / 10,
+      ).toLocaleString(
+        'fa-IR',
+      )} تومان</b>\n` +
+      `اعتبار فاکتور تا: <b>${escapeHtml(
+        expiry,
+      )}</b>\n\n` +
+      `لطفاً مبلغ دقیق فاکتور را پرداخت کنید.\n\n` +
+      `پس از تأیید پرداخت، مبلغ <b>${amount.toLocaleString(
+        'fa-IR',
+      )} تومان</b> به کیف پول شما اضافه می‌شود.`;
+
+    if (
+      promptMessageId
+    ) {
+      await editMessageText(
+        botToken,
+        message.chat.id,
+        promptMessageId,
+        invoiceText,
+        {
+          inline_keyboard:
+            paymentRows,
+        },
+      );
+
+      return;
+    }
+
     return sendMessage(
       botToken,
       message.chat.id,
-      `💳 <b>فاکتور شارژ کیف پول</b>\n\n` +
-        `مبلغ شارژ: <b>${amount.toLocaleString(
-          'fa-IR',
-        )} تومان</b>\n` +
-        `مبلغ قابل پرداخت: <b>${Math.floor(
-          invoice.final_amount / 10,
-        ).toLocaleString(
-          'fa-IR',
-        )} تومان</b>\n` +
-        `اعتبار فاکتور تا: <b>${escapeHtml(
-          expiry,
-        )}</b>\n\n` +
-        `لطفاً مبلغ دقیق فاکتور را پرداخت کنید.\n\n` +
-        `پس از تأیید پرداخت، مبلغ <b>${amount.toLocaleString(
-          'fa-IR',
-        )} تومان</b> به کیف پول شما اضافه می‌شود.`,
+      invoiceText,
       {
         inline_keyboard:
           paymentRows,
@@ -269,14 +394,14 @@ export async function handleWalletTopupAmount(
       error.stack,
     );
 
-    return sendMessage(
+    return editPrompt(
       botToken,
       message.chat.id,
-      `❌ ساخت فاکتور شارژ انجام نشد.\n\n` +
+      promptMessageId,
+      `❌ <b>ساخت فاکتور شارژ انجام نشد.</b>\n\n` +
         `<code>${escapeHtml(
           error.message,
         )}</code>`,
-      getAccountKeyboard(),
     );
   }
 }
@@ -326,7 +451,7 @@ export async function cancelWalletTopupFromCallback(
       botToken,
       chatId,
       '❌ عملیات شارژ کیف پول لغو شد.',
-      getAccountKeyboard(),
+      getAccountBackReplyKeyboard(),
     );
   }
 
@@ -389,6 +514,6 @@ export async function cancelWalletTopupFromCallback(
     botToken,
     chatId,
     '❌ فاکتور شارژ کیف پول لغو شد.',
-    getAccountKeyboard(),
+    getAccountBackReplyKeyboard(),
   );
 }
