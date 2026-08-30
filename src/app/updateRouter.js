@@ -1,4 +1,12 @@
+/**
+ * Telegram update router.
+ *
+ * مسئول این فایل فقط تشخیص نوع Update
+ * و تحویل آن به handler مناسب است.
+ */
+
 import handleCommand from '../handlers/commandHandler.js';
+
 import handleMessage from '../handlers/subscriptionMessageHandler.js';
 
 import {
@@ -59,27 +67,29 @@ export async function routeTelegramUpdate(
 
     if (
       data ===
-      'wallet_topup_start'
-    ) {
-      await startWalletTopup(
-        callback.message,
-        env,
-        db,
-      );
-
-      return;
-    }
-
-    if (
+        'wallet_topup_start' ||
+      data ===
+        'wallet_topup_cancel_current' ||
       data.startsWith(
         'wallet_topup_cancel:',
       )
     ) {
-      await cancelWalletTopupFromCallback(
-        callback,
-        env,
-        db,
-      );
+      if (
+        data ===
+        'wallet_topup_start'
+      ) {
+        await startWalletTopup(
+          callback,
+          env,
+          db,
+        );
+      } else {
+        await cancelWalletTopupFromCallback(
+          callback,
+          env,
+          db,
+        );
+      }
 
       return;
     }
