@@ -10,10 +10,14 @@ export async function createWalletTopup(
   }
 
   const userId =
-    String(telegramId);
+    String(
+      telegramId,
+    );
 
   const amount =
-    Number(amountToman);
+    Number(
+      amountToman,
+    );
 
   if (
     !Number.isInteger(amount) ||
@@ -30,7 +34,9 @@ export async function createWalletTopup(
   const expiresAt =
     new Date(
       Date.now() +
-        20 * 60 * 1000,
+        20 *
+          60 *
+          1000,
     ).toISOString();
 
   const result =
@@ -63,9 +69,12 @@ export async function createWalletTopup(
 
   return {
     id,
-    telegramId: userId,
-    amountToman: amount,
-    amountRial,
+    telegramId:
+      userId,
+    amountToman:
+      amount,
+    amountRial:
+      amountRial,
     expiresAt,
   };
 }
@@ -82,10 +91,14 @@ export async function attachWalletTopupInvoice(
   }
 
   const invoiceId =
-    Number(invoice?.invoice_id);
+    Number(
+      invoice?.invoice_id,
+    );
 
   const finalAmount =
-    Number(invoice?.final_amount);
+    Number(
+      invoice?.final_amount,
+    );
 
   if (
     !Number.isInteger(invoiceId) ||
@@ -120,12 +133,15 @@ export async function attachWalletTopupInvoice(
       .bind(
         invoiceId,
         finalAmount,
-        invoice?.payment_link ?? null,
+        invoice?.payment_link ??
+          null,
         topupId,
       )
       .run();
 
-  if (!result?.meta?.changes) {
+  if (
+    !result?.meta?.changes
+  ) {
     throw new Error(
       `Failed to attach invoice to wallet top-up ${topupId}.`,
     );
@@ -143,7 +159,9 @@ export async function getWalletTopupById(
       WHERE id = ?
       LIMIT 1
     `)
-    .bind(topupId)
+    .bind(
+      topupId,
+    )
     .first();
 }
 
@@ -158,7 +176,9 @@ export async function getWalletTopupByInvoiceId(
       WHERE blupal_invoice_id = ?
       LIMIT 1
     `)
-    .bind(Number(invoiceId))
+    .bind(
+      Number(invoiceId),
+    )
     .first();
 }
 
@@ -175,7 +195,9 @@ export async function cancelWalletTopup(
       WHERE id = ?
         AND status = 'waiting_payment'
     `)
-    .bind(topupId)
+    .bind(
+      topupId,
+    )
     .run();
 }
 
@@ -192,14 +214,21 @@ export async function expireWalletTopup(
       WHERE id = ?
         AND status = 'waiting_payment'
     `)
-    .bind(topupId)
+    .bind(
+      topupId,
+    )
     .run();
 }
 
-export async function approveWalletTopup(
+/**
+ * فقط invoice را اعتبارسنجی می‌کند.
+ *
+ * این تابع دیگر status را paid نمی‌کند.
+ * paid شدن بعد از موفقیت Wallet انجام می‌شود.
+ */
+export async function validateWalletTopupPayment(
   db,
   invoiceId,
-  transactionId,
   finalAmount,
 ) {
   const topup =
@@ -233,8 +262,12 @@ export async function approveWalletTopup(
   }
 
   if (
-    Number(topup.blupal_final_amount) !==
-    Number(finalAmount)
+    Number(
+      topup.blupal_final_amount,
+    ) !==
+    Number(
+      finalAmount,
+    )
   ) {
     const error =
       new Error(
@@ -269,6 +302,17 @@ export async function approveWalletTopup(
     };
   }
 
+  return {
+    topup,
+    duplicate: false,
+  };
+}
+
+export async function markWalletTopupPaid(
+  db,
+  topupId,
+  transactionId,
+) {
   const result =
     await db
       .prepare(`
@@ -282,28 +326,30 @@ export async function approveWalletTopup(
           AND status = 'waiting_payment'
       `)
       .bind(
-        transactionId ?? null,
-        topup.id,
+        transactionId ??
+          null,
+        topupId,
       )
       .run();
 
-  if (!result?.meta?.changes) {
-    return {
-      topup:
-        await getWalletTopupByInvoiceId(
-          db,
-          invoiceId,
-        ),
-      duplicate: true,
-    };
+  if (
+    result?.meta?.changes
+  ) {
+    return true;
   }
 
-  return {
-    topup:
-      await getWalletTopupById(
-        db,
-        topup.id,
-      ),
-    duplicate: false,
-  };
+  const current =
+    await getWalletTopupById(
+      db,
+      topupId,
+    );
+
+  if (
+    current?.status ===
+    'paid'
+  ) {
+    return true;
+  }
+
+  return false;
 }
