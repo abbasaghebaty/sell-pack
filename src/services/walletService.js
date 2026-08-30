@@ -7,26 +7,106 @@
  * تومان
  */
 
-function validateUserId(telegramUserId) {
+function validateUserId(
+  telegramUserId,
+) {
   if (
     telegramUserId === undefined ||
     telegramUserId === null ||
-    String(telegramUserId).trim() === ''
+    String(
+      telegramUserId,
+    ).trim() === ''
   ) {
-    throw new Error('Telegram user ID is required.');
+    throw new Error(
+      'Telegram user ID is required.',
+    );
   }
 
-  return String(telegramUserId);
+  return String(
+    telegramUserId,
+  );
 }
 
-function validateAmount(amount) {
-  const value = Number(amount);
+function validateAmount(
+  amount,
+) {
+  const value =
+    Number(amount);
 
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error('Wallet amount must be a positive integer.');
+  if (
+    !Number.isInteger(value) ||
+    value <= 0
+  ) {
+    throw new Error(
+      'Wallet amount must be a positive integer.',
+    );
   }
 
   return value;
+}
+
+function isDuplicateConstraint(
+  error,
+) {
+  const message =
+    String(
+      error?.message || '',
+    ).toLowerCase();
+
+  return (
+    message.includes(
+      'unique constraint',
+    ) ||
+    message.includes(
+      'constraint failed',
+    ) ||
+    message.includes(
+      'is not unique',
+    )
+  );
+}
+
+async function transactionExists(
+  walletDb,
+  telegramUserId,
+  type,
+  referenceType,
+  referenceId,
+) {
+  if (
+    !referenceType ||
+    referenceId === null ||
+    referenceId === undefined
+  ) {
+    return false;
+  }
+
+  const result =
+    await walletDb
+      .prepare(`
+        SELECT id
+        FROM wallet_transactions
+        WHERE telegram_user_id = ?
+          AND type = ?
+          AND reference_type = ?
+          AND reference_id = ?
+        LIMIT 1
+      `)
+      .bind(
+        String(
+          telegramUserId,
+        ),
+        type,
+        String(
+          referenceType,
+        ),
+        String(
+          referenceId,
+        ),
+      )
+      .first();
+
+  return Boolean(result);
 }
 
 export async function ensureWalletAccount(
@@ -34,11 +114,15 @@ export async function ensureWalletAccount(
   telegramUserId,
 ) {
   if (!walletDb) {
-    throw new Error('Wallet database is not available.');
+    throw new Error(
+      'Wallet database is not available.',
+    );
   }
 
   const userId =
-    validateUserId(telegramUserId);
+    validateUserId(
+      telegramUserId,
+    );
 
   await walletDb
     .prepare(`
@@ -66,7 +150,9 @@ export async function getWalletAccount(
   }
 
   const userId =
-    validateUserId(telegramUserId);
+    validateUserId(
+      telegramUserId,
+    );
 
   return walletDb
     .prepare(`
@@ -101,6 +187,9 @@ export async function getWalletBalance(
 
 /**
  * افزایش موجودی
+ *
+ * اگر reference یکتا وجود داشته باشد،
+ * عملیات idempotent است.
  */
 export async function creditWallet(
   walletDb,
@@ -114,26 +203,50 @@ export async function creditWallet(
   } = {},
 ) {
   if (!walletDb) {
-    throw new Error('Wallet database is not available.');
+    throw new Error(
+      'Wallet database is not available.',
+    );
   }
 
   const userId =
-    validateUserId(telegramUserId);
+    validateUserId(
+      telegramUserId,
+    );
 
   const value =
-    validateAmount(amount);
+    validateAmount(
+      amount,
+    );
+
+  const hasReference =
+    Boolean(
+      referenceType &&
+      referenceId !== null &&
+      referenceId !== undefined,
+    );
+
+  if (
+    hasReference &&
+    await transactionExists(
+      walletDb,
+      userId,
+      type,
+      referenceType,
+      referenceId,
+    )
+  ) {
+    return getWalletAccount(
+      walletDb,
+      userId,
+    );
+  }
+
+  await ensureWalletAccount(
+    walletDb,
+    userId,
+  );
 
   const statements = [
-    walletDb
-      .prepare(`
-        INSERT OR IGNORE INTO wallet_accounts (
-          telegram_user_id,
-          balance
-        )
-        VALUES (?, 0)
-      `)
-      .bind(userId),
-
     walletDb
       .prepare(`
         UPDATE wallet_accounts
@@ -142,7 +255,10 @@ export async function creditWallet(
           updated_at = CURRENT_TIMESTAMP
         WHERE telegram_user_id = ?
       `)
-      .bind(value, userId),
+      .bind(
+        value,
+        userId,
+      ),
 
     walletDb
       .prepare(`
@@ -170,6 +286,7 @@ export async function creditWallet(
           AND changes() > 0
       `)
       .bind(
+        userId,
         type,
         value,
         value,
@@ -180,20 +297,34 @@ export async function creditWallet(
       ),
   ];
 
-  const results =
+  try {
     await walletDb.batch(
       statements,
     );
+  } catch (error) {
+    /*
+     * اگر درخواست همزمان دیگری همین reference
+     * را ثبت کرده باشد، unique index جلوی duplicate
+     * را می‌گیرد.
+     */
+    if (
+      hasReference &&
+      isDuplicateConstraint(error) &&
+      await transactionExists(
+        walletDb,
+        userId,
+        type,
+        referenceType,
+        referenceId,
+      )
+    ) {
+      return getWalletAccount(
+        walletDb,
+        userId,
+      );
+    }
 
-  const updateResult =
-    results?.[1];
-
-  if (
-    !updateResult?.meta?.changes
-  ) {
-    throw new Error(
-      'Wallet credit failed.',
-    );
+    throw error;
   }
 
   return getWalletAccount(
@@ -204,6 +335,8 @@ export async function creditWallet(
 
 /**
  * کاهش موجودی
+ *
+ * عملیات با reference یکتا idempotent است.
  */
 export async function debitWallet(
   walletDb,
@@ -217,26 +350,50 @@ export async function debitWallet(
   } = {},
 ) {
   if (!walletDb) {
-    throw new Error('Wallet database is not available.');
+    throw new Error(
+      'Wallet database is not available.',
+    );
   }
 
   const userId =
-    validateUserId(telegramUserId);
+    validateUserId(
+      telegramUserId,
+    );
 
   const value =
-    validateAmount(amount);
+    validateAmount(
+      amount,
+    );
+
+  const hasReference =
+    Boolean(
+      referenceType &&
+      referenceId !== null &&
+      referenceId !== undefined,
+    );
+
+  if (
+    hasReference &&
+    await transactionExists(
+      walletDb,
+      userId,
+      type,
+      referenceType,
+      referenceId,
+    )
+  ) {
+    return getWalletAccount(
+      walletDb,
+      userId,
+    );
+  }
+
+  await ensureWalletAccount(
+    walletDb,
+    userId,
+  );
 
   const statements = [
-    walletDb
-      .prepare(`
-        INSERT OR IGNORE INTO wallet_accounts (
-          telegram_user_id,
-          balance
-        )
-        VALUES (?, 0)
-      `)
-      .bind(userId),
-
     walletDb
       .prepare(`
         UPDATE wallet_accounts
@@ -278,6 +435,7 @@ export async function debitWallet(
           AND changes() > 0
       `)
       .bind(
+        userId,
         type,
         -value,
         value,
@@ -288,20 +446,41 @@ export async function debitWallet(
       ),
   ];
 
-  const results =
-    await walletDb.batch(
-      statements,
-    );
+  try {
+    const results =
+      await walletDb.batch(
+        statements,
+      );
 
-  const updateResult =
-    results?.[1];
+    const updateResult =
+      results?.[0];
 
-  if (
-    !updateResult?.meta?.changes
-  ) {
-    throw new Error(
-      'Insufficient wallet balance.',
-    );
+    if (
+      !updateResult?.meta?.changes
+    ) {
+      throw new Error(
+        'Insufficient wallet balance.',
+      );
+    }
+  } catch (error) {
+    if (
+      hasReference &&
+      isDuplicateConstraint(error) &&
+      await transactionExists(
+        walletDb,
+        userId,
+        type,
+        referenceType,
+        referenceId,
+      )
+    ) {
+      return getWalletAccount(
+        walletDb,
+        userId,
+      );
+    }
+
+    throw error;
   }
 
   return getWalletAccount(
@@ -310,42 +489,14 @@ export async function debitWallet(
   );
 }
 
-async function hasTransaction(
-  walletDb,
-  telegramUserId,
-  type,
-  referenceType,
-  referenceId,
-) {
-  const result =
-    await walletDb
-      .prepare(`
-        SELECT id
-        FROM wallet_transactions
-        WHERE telegram_user_id = ?
-          AND type = ?
-          AND reference_type = ?
-          AND reference_id = ?
-        LIMIT 1
-      `)
-      .bind(
-        String(telegramUserId),
-        type,
-        referenceType,
-        String(referenceId),
-      )
-      .first();
-
-  return Boolean(result);
-}
-
 /**
- * تسویه پرداخت دوره در کیف پول
+ * تسویه پرداخت دوره
  *
- * یک بار پول وارد کیف پول می‌شود
- * و بلافاصله همان مبلغ بابت خرید دوره خارج می‌شود.
+ * پرداخت واقعی:
+ *   payment_credit  +
+ *   course_purchase -
  *
- * عملیات با reference یکتا idempotent است.
+ * هر دو reference مستقل ولی یکتا هستند.
  */
 export async function settleCoursePaymentToWallet(
   walletDb,
@@ -354,19 +505,31 @@ export async function settleCoursePaymentToWallet(
   invoiceId,
 ) {
   const userId =
-    validateUserId(telegramUserId);
+    validateUserId(
+      telegramUserId,
+    );
 
   const amount =
-    validateAmount(amountToman);
+    validateAmount(
+      amountToman,
+    );
+
+  if (!walletDb) {
+    throw new Error(
+      'Wallet database is not available.',
+    );
+  }
 
   const referenceType =
     'course_payment';
 
   const referenceId =
-    String(invoiceId);
+    String(
+      invoiceId,
+    );
 
   const creditExists =
-    await hasTransaction(
+    await transactionExists(
       walletDb,
       userId,
       'payment_credit',
@@ -380,9 +543,13 @@ export async function settleCoursePaymentToWallet(
       userId,
       amount,
       {
-        type: 'payment_credit',
+        type:
+          'payment_credit',
+
         referenceType,
+
         referenceId,
+
         description:
           'شارژ کیف پول بابت پرداخت دوره',
       },
@@ -390,7 +557,7 @@ export async function settleCoursePaymentToWallet(
   }
 
   const debitExists =
-    await hasTransaction(
+    await transactionExists(
       walletDb,
       userId,
       'course_purchase',
@@ -404,9 +571,13 @@ export async function settleCoursePaymentToWallet(
       userId,
       amount,
       {
-        type: 'course_purchase',
+        type:
+          'course_purchase',
+
         referenceType,
+
         referenceId,
+
         description:
           'پرداخت هزینه دوره از کیف پول',
       },
