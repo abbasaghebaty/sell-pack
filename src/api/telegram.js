@@ -317,6 +317,16 @@ export function getChatMember(
   );
 }
 
+export function getMe(
+  botToken
+) {
+  return telegramRequest(
+    botToken,
+    'getMe',
+    {}
+  );
+}
+
 export default {
   sendMessage,
   answerCallbackQuery,
@@ -328,16 +338,5 @@ export default {
   declineChatJoinRequest,
   unbanChatMember,
   getChatMember,
+  getMe,
 };
-
-
-
-export function getMe(
-  botToken,
-) {
-  return telegramRequest(
-    botToken,
-    'getMe',
-    {},
-  );
-}
