@@ -63,8 +63,11 @@ export function parseWebhookPayload(
 
   if (
     !Number.isInteger(invoiceId) ||
+    invoiceId <= 0 ||
     !Number.isInteger(amount) ||
-    !Number.isInteger(finalAmount)
+    amount <= 0 ||
+    !Number.isInteger(finalAmount) ||
+    finalAmount <= 0
   ) {
     throw new Error(
       'Invalid payment payload',
@@ -79,7 +82,8 @@ export function parseWebhookPayload(
       payload?.transaction_id ??
       null,
     mode:
-      payload?.mode ?? null,
+      payload?.mode ??
+      null,
   };
 }
 
@@ -148,10 +152,8 @@ export async function validatePurchaseWebhook(
   }
 
   if (
-    purchase.blupal_final_amount !==
-      null &&
-    purchase.blupal_final_amount !==
-      undefined &&
+    purchase.blupal_final_amount !== null &&
+    purchase.blupal_final_amount !== undefined &&
     Number(
       purchase.blupal_final_amount,
     ) !== parsed.finalAmount
@@ -186,6 +188,9 @@ export async function validatePurchaseWebhook(
     throw error;
   }
 
+  /*
+   * کاملاً انجام شده:
+   */
   if (
     purchase.status ===
       'approved' &&
@@ -195,6 +200,21 @@ export async function validatePurchaseWebhook(
     return {
       purchase,
       duplicate: true,
+    };
+  }
+
+  /*
+   * پرداخت approve شده ولی activation
+   * کامل نشده؛ باید retry شود.
+   */
+  if (
+    purchase.status ===
+    'approved'
+  ) {
+    return {
+      purchase,
+      duplicate: false,
+      alreadyApproved: true,
     };
   }
 
@@ -212,6 +232,7 @@ export async function validatePurchaseWebhook(
   return {
     purchase,
     duplicate: false,
+    alreadyApproved: false,
   };
 }
 
@@ -231,37 +252,55 @@ export async function processPaymentWebhook(
     return validation;
   }
 
-  if (validation.duplicate) {
+  if (
+    validation.duplicate
+  ) {
     return validation;
   }
 
-  const approvedPurchase =
-    await approveBlupalPurchase(
-      db,
-      parsed.invoiceId,
-      parsed.transactionId,
-      parsed.finalAmount,
-      parsed.mode ??
-        getExpectedBlupalMode(
-          env.BLUPAL_API_KEY,
-        ),
-    );
+  let approvedPurchase =
+    validation.purchase;
 
-  if (!approvedPurchase) {
-    const error =
-      new Error(
-        'Could not approve purchase',
+  /*
+   * اگر قبلاً approve نشده،
+   * الان approve می‌کنیم.
+   */
+  if (
+    !validation.alreadyApproved
+  ) {
+    approvedPurchase =
+      await approveBlupalPurchase(
+        db,
+        parsed.invoiceId,
+        parsed.transactionId,
+        parsed.finalAmount,
+        parsed.mode ??
+          getExpectedBlupalMode(
+            env.BLUPAL_API_KEY,
+          ),
       );
 
-    error.status = 500;
+    if (!approvedPurchase) {
+      const error =
+        new Error(
+          'Could not approve purchase',
+        );
 
-    throw error;
+      error.status = 500;
+
+      throw error;
+    }
   }
 
+  /*
+   * مبلغ پایه دوره به تومان.
+   * بر اساس amount اصلی دوره،
+   * نه final_amount احتمالی.
+   */
   const walletAmountToman =
-    Math.floor(
-      parsed.finalAmount / 10,
-    );
+    Number(
+      approvedPurchase.amount,
+    ) / 10;
 
   if (
     !Number.isInteger(
@@ -270,10 +309,18 @@ export async function processPaymentWebhook(
     walletAmountToman <= 0
   ) {
     throw new Error(
-      'Invalid wallet payment amount.',
+      'Invalid course wallet amount.',
     );
   }
 
+  /*
+   * قبل از activation،
+   * ledger Wallet کامل می‌شود.
+   *
+   * اگر این مرحله fail شود،
+   * purchase approved/inactive می‌ماند
+   * و webhook بعدی retry می‌شود.
+   */
   await settleCoursePaymentToWallet(
     env.WALLET_DB,
     approvedPurchase.telegram_id,
