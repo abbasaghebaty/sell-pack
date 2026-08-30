@@ -1,10 +1,3 @@
-/**
- * Admin Application Handler
- *
- * مسیر:
- * src/handlers/adminApplicationHandler.js
- */
-
 import {
   sendMessage,
 } from '../api/telegram.js';
@@ -27,23 +20,15 @@ import {
 } from '../database/userStates.js';
 
 import {
-  createAdminApplication,
-  getLatestPendingApplicationByTelegramId,
-  deletePendingApplicationsByTelegramId,
-} from '../database/adminApplications.js';
+  startAdminApplicationFlow,
+  saveAdminApplicationFlow,
+  buildAdminApplication,
+} from '../services/adminApplicationService.js';
 
-import {
-  sendApplicationToChannel,
-} from './adminApplicationReviewHandler.js';
-
-
-/**
- * شروع فرم
- */
 export async function startAdminApplication(
   message,
   env,
-  db
+  db,
 ) {
   const botToken =
     env.TELEGRAM_BOT_TOKEN;
@@ -51,64 +36,50 @@ export async function startAdminApplication(
   const chatId =
     message.chat.id;
 
-  const telegramUser =
-    message.from;
-
   if (!db) {
-    return await sendMessage(
+    return sendMessage(
       botToken,
       chatId,
-      '❌ دیتابیس در دسترس نیست. لطفاً بعداً دوباره تلاش کنید.'
+      '❌ دیتابیس در دسترس نیست. لطفاً بعداً دوباره تلاش کنید.',
     );
   }
 
   try {
-    await setUserState(
+    await startAdminApplicationFlow(
       db,
-      telegramUser.id,
-      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME,
-      {}
+      message.from.id,
     );
 
-    return await sendMessage(
+    return sendMessage(
       botToken,
       chatId,
-
       `📝 <b>ثبت درخواست ادمینی</b>\n\n` +
-      `لطفاً <b>نام</b> خود را وارد کنید.`,
-
-      getAdminApplicationBackKeyboard()
+        `لطفاً <b>نام</b> خود را وارد کنید.`,
+      getAdminApplicationBackKeyboard(),
     );
-
   } catch (error) {
     console.error(
-      '❌ Failed to start admin application:',
+      'Failed to start admin application:',
       error.message,
-      error.stack
+      error.stack,
     );
 
-    return await sendMessage(
+    return sendMessage(
       botToken,
       chatId,
-
       `❌ در شروع فرم مشکلی پیش آمد.\n\n` +
-      `لطفاً دوباره تلاش کنید.`,
-
-      getAdminApplicationStartKeyboard()
+        `لطفاً دوباره تلاش کنید.`,
+      getAdminApplicationStartKeyboard(),
     );
   }
 }
 
-
-/**
- * پردازش فرم
- */
 export async function handleAdminApplication(
   message,
   env,
   db,
   currentState,
-  currentData = {}
+  currentData = {},
 ) {
   const botToken =
     env.TELEGRAM_BOT_TOKEN;
@@ -123,47 +94,40 @@ export async function handleAdminApplication(
     message.text?.trim();
 
   if (!db) {
-    return await sendMessage(
+    return sendMessage(
       botToken,
       chatId,
-      '❌ دیتابیس در دسترس نیست.'
+      '❌ دیتابیس در دسترس نیست.',
     );
   }
 
-
-  /*
-   * بازگشت
-   */
   if (
-    text === EARN_MONEY_BUTTONS.BACK
+    text ===
+    EARN_MONEY_BUTTONS.BACK
   ) {
     await clearUserState(
       db,
-      telegramUser.id
+      telegramUser.id,
     );
 
-    return await sendMessage(
+    return sendMessage(
       botToken,
       chatId,
       'عملیات لغو شد.',
-      getMainMenuKeyboard()
+      getMainMenuKeyboard(),
     );
   }
 
-
-  /*
-   * نام
-   */
   if (
     currentState ===
     USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME
   ) {
     if (!text) {
-      return await sendMessage(
+      return sendMessage(
         botToken,
         chatId,
         '❌ لطفاً نام خود را وارد کنید.',
-        getAdminApplicationBackKeyboard()
+        getAdminApplicationBackKeyboard(),
       );
     }
 
@@ -174,34 +138,28 @@ export async function handleAdminApplication(
       {
         ...currentData,
         first_name: text,
-      }
+      },
     );
 
-    return await sendMessage(
+    return sendMessage(
       botToken,
       chatId,
-
       `نام ثبت شد.\n\n` +
-      `لطفاً <b>نام خانوادگی</b> خود را وارد کنید.`,
-
-      getAdminApplicationBackKeyboard()
+        `لطفاً <b>نام خانوادگی</b> خود را وارد کنید.`,
+      getAdminApplicationBackKeyboard(),
     );
   }
 
-
-  /*
-   * نام خانوادگی
-   */
   if (
     currentState ===
     USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME
   ) {
     if (!text) {
-      return await sendMessage(
+      return sendMessage(
         botToken,
         chatId,
         '❌ لطفاً نام خانوادگی خود را وارد کنید.',
-        getAdminApplicationBackKeyboard()
+        getAdminApplicationBackKeyboard(),
       );
     }
 
@@ -212,238 +170,93 @@ export async function handleAdminApplication(
       {
         ...currentData,
         last_name: text,
-      }
+      },
     );
 
-    return await sendMessage(
+    return sendMessage(
       botToken,
       chatId,
-
       `نام خانوادگی ثبت شد.\n\n` +
-      `حالا شماره تلفن خود را با استفاده از دکمه زیر ارسال کنید.`,
-
-      getAdminApplicationPhoneKeyboard()
+        `حالا شماره تلفن خود را با استفاده از دکمه زیر ارسال کنید.`,
+      getAdminApplicationPhoneKeyboard(),
     );
   }
 
-
-  /*
-   * شماره تلفن
-   */
   if (
     currentState ===
     USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE
   ) {
-    let phone = null;
+    const application =
+      buildAdminApplication(
+        message,
+        currentData,
+      );
 
-    if (
-      message.contact?.phone_number
-    ) {
-      phone =
-        message.contact.phone_number;
-    }
-
-    if (!phone && text) {
-      phone = text;
-    }
-
-    if (!phone) {
-      return await sendMessage(
+    if (!application.phone) {
+      return sendMessage(
         botToken,
         chatId,
-
         `❌ شماره تلفن دریافت نشد.\n\n` +
-        `لطفاً شماره خود را ارسال کنید.`,
-
-        getAdminApplicationPhoneKeyboard()
+          `لطفاً شماره خود را ارسال کنید.`,
+        getAdminApplicationPhoneKeyboard(),
       );
     }
-
-
-    const application = {
-      telegram_id:
-        telegramUser.id,
-
-      username:
-        telegramUser.username ??
-        null,
-
-      first_name:
-        currentData.first_name ??
-        telegramUser.first_name ??
-        null,
-
-      last_name:
-        currentData.last_name ??
-        telegramUser.last_name ??
-        null,
-
-      phone,
-    };
-
-
-    /*
-     * درخواست pending قبلی
-     */
-    let oldPending = null;
 
     try {
-      oldPending =
-        await getLatestPendingApplicationByTelegramId(
+      const result =
+        await saveAdminApplicationFlow(
           db,
-          telegramUser.id
-        );
-    } catch (error) {
-      console.error(
-        '❌ Failed to check pending application:',
-        error.message
-      );
-    }
-
-
-    /*
-     * حذف درخواست pending قبلی
-     */
-    if (oldPending) {
-      try {
-        await deletePendingApplicationsByTelegramId(
-          db,
-          telegramUser.id
-        );
-
-        console.log(
-          `♻️ Previous pending application #${oldPending.id} replaced`
-        );
-
-      } catch (error) {
-        console.error(
-          '❌ Failed to replace old application:',
-          error.message
-        );
-
-        return await sendMessage(
+          application,
           botToken,
-          chatId,
-
-          `❌ درخواست قبلی شما قابل جایگزینی نبود.\n\n` +
-          `لطفاً دوباره تلاش کنید.`,
-
-          getAdminApplicationBackKeyboard()
         );
+
+      let successText =
+        `✅ <b>درخواست شما با موفقیت ثبت شد.</b>\n\n`;
+
+      if (result.oldPending) {
+        successText +=
+          `♻️ درخواست قبلی شما حذف شد و درخواست جدیدتان در <b>انتهای صف</b> قرار گرفت.\n\n`;
       }
-    }
 
+      successText +=
+        `⏳ وضعیت: <b>در حال بررسی</b>\n\n` +
+        `پس از بررسی درخواست، نتیجه اعلام خواهد شد.`;
 
-    /*
-     * ثبت درخواست جدید
-     */
-    let result;
-
-    try {
-      result =
-        await createAdminApplication(
-          db,
-          application
-        );
-
-    } catch (error) {
-      console.error(
-        '❌ Failed to create application:',
-        error.message,
-        error.stack
-      );
-
-      return await sendMessage(
+      return sendMessage(
         botToken,
         chatId,
-
-        `❌ در ثبت درخواست مشکلی پیش آمد.\n\n` +
-        `لطفاً چند لحظه بعد دوباره تلاش کنید.`,
-
-        getAdminApplicationBackKeyboard()
+        successText,
+        getMainMenuKeyboard(),
       );
-    }
-
-
-    const applicationId =
-      result?.meta?.last_row_id ??
-      null;
-
-
-    /*
-     * فقط یک بار ارسال به کانال
-     */
-    try {
-      await sendApplicationToChannel(
-        botToken,
-        applicationId,
-        application
-      );
-
     } catch (error) {
       console.error(
-        '❌ Failed to send application to channel:',
+        'Failed to save application:',
         error.message,
-        error.stack
+        error.stack,
+      );
+
+      return sendMessage(
+        botToken,
+        chatId,
+        `❌ در ثبت درخواست مشکلی پیش آمد.\n\n` +
+          `لطفاً چند لحظه بعد دوباره تلاش کنید.`,
+        getAdminApplicationBackKeyboard(),
       );
     }
-
-
-    /*
-     * پاک کردن State
-     */
-    await clearUserState(
-      db,
-      telegramUser.id
-    );
-
-
-    /*
-     * پیام موفقیت
-     */
-    let successText =
-      `✅ <b>درخواست شما با موفقیت ثبت شد.</b>\n\n`;
-
-    if (oldPending) {
-      successText +=
-        `♻️ درخواست قبلی شما حذف شد و درخواست جدیدتان در <b>انتهای صف</b> قرار گرفت.\n\n`;
-    }
-
-    successText +=
-      `⏳ وضعیت: <b>در حال بررسی</b>\n\n` +
-      `پس از بررسی درخواست، نتیجه اعلام خواهد شد.`;
-
-
-    /*
-     * برگشت مستقیم به Home
-     */
-    return await sendMessage(
-      botToken,
-      chatId,
-      successText,
-      getMainMenuKeyboard()
-    );
   }
 
-
-  /*
-   * State نامعتبر
-   */
   await clearUserState(
     db,
-    telegramUser.id
+    telegramUser.id,
   );
 
-  return await sendMessage(
+  return sendMessage(
     botToken,
     chatId,
-
     `❌ وضعیت فرم نامعتبر بود.\n\n` +
-    `لطفاً دوباره از ابتدا شروع کنید.`,
-
-    getAdminApplicationStartKeyboard()
+      `لطفاً دوباره از ابتدا شروع کنید.`,
+    getAdminApplicationStartKeyboard(),
   );
 }
-
 
 export default handleAdminApplication;
