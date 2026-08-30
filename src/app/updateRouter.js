@@ -23,8 +23,8 @@ import {
 } from '../handlers/walletTopupHandler.js';
 
 import {
-  showAccount,
-} from '../handlers/accountHandler.js';
+  showMainMenu,
+} from '../handlers/menuHandler.js';
 
 export async function routeTelegramUpdate(
   update,
@@ -94,19 +94,17 @@ export async function routeTelegramUpdate(
       return;
     }
 
-    if (
-      data ===
-      'account_back'
-    ) {
-      await showAccount(
-        callback.message,
-        env,
-        db,
-      );
+if (
+  data ===
+  'account_back'
+) {
+  await showMainMenu(
+    callback.message,
+    env,
+  );
 
-      return;
-    }
-
+  return;
+}
     await handleAdminApplicationCallback(
       callback,
       env,
