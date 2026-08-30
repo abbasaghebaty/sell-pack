@@ -13,6 +13,9 @@ export const USER_STATES = Object.freeze({
 
   WAITING_FOR_ADMIN_VERIFICATION:
     'waiting_for_admin_verification',
+  
+  WAITING_FOR_WALLET_TOPUP_AMOUNT:
+  'waiting_for_wallet_topup_amount',
 
   WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION:
     'waiting_for_admin_application_confirmation',
