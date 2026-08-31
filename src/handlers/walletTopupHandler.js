@@ -12,7 +12,6 @@ import {
 import {
   USER_STATES,
   setUserState,
-  updateUserStateData,
   clearUserState,
   getUserState,
 } from '../database/userStates.js';
@@ -25,12 +24,12 @@ import {
 } from '../database/walletTopups.js';
 
 import {
-  getAccountBackReplyKeyboard,
-} from '../../keyboards/account.js';
-
-import {
   createCancelTopupKeyboard,
 } from '../../keyboards/walletTopup.js';
+
+import {
+  showMainMenu,
+} from './menuHandler.js';
 
 const MIN_TOPUP_TOMAN =
   10_000;
@@ -100,6 +99,59 @@ function getChatId(source) {
   );
 }
 
+async function goToHome(
+  botToken,
+  callbackQuery,
+  env,
+) {
+  const chatId =
+    callbackQuery?.message?.chat?.id ??
+    null;
+
+  const user =
+    callbackQuery?.from ??
+    null;
+
+  if (
+    callbackQuery?.message?.message_id &&
+    chatId
+  ) {
+    try {
+      await deleteMessage(
+        botToken,
+        chatId,
+        callbackQuery.message.message_id,
+      );
+    } catch (error) {
+      console.warn(
+        'Could not delete wallet top-up message:',
+        error.message,
+      );
+    }
+  }
+
+  await answerCallbackQuery(
+    botToken,
+    callbackQuery.id,
+  );
+
+  return showMainMenu(
+    {
+      chat: {
+        id: chatId,
+      },
+      from: {
+        id: user?.id,
+        first_name:
+          user?.first_name,
+        last_name:
+          user?.last_name,
+      },
+    },
+    env,
+  );
+}
+
 export async function startWalletTopup(
   source,
   env,
@@ -132,14 +184,9 @@ export async function startWalletTopup(
       botToken,
       chatId,
       '❌ دیتابیس در دسترس نیست.',
-      getAccountBackReplyKeyboard(),
     );
   }
 
-  /*
-   * اطلاعات پیام اصلی حساب را
-   * برای ویرایش‌های بعدی ذخیره می‌کنیم.
-   */
   await setUserState(
     db,
     userId,
@@ -164,49 +211,23 @@ export async function startWalletTopup(
     `<code>20</code>\n\n` +
     `حداقل مبلغ شارژ: <b>۱۰,۰۰۰ تومان</b>`;
 
-  /*
-   * خود پیام حساب را ویرایش می‌کنیم.
-   */
   if (sourceMessageId) {
-    await editMessageText(
+    return editMessageText(
       botToken,
       chatId,
       sourceMessageId,
       promptText,
       createCancelTopupKeyboard(),
     );
-  } else {
-    await sendMessage(
-      botToken,
-      chatId,
-      promptText,
-      createCancelTopupKeyboard(),
-    );
   }
 
-  /*
-   * Reply Keyboard فقط یک دکمه:
-   * 🔙
-   */
-const promptReply = await sendMessage(
-  botToken,
-  chatId,
-  'مبلغ را ارسال کنید.',
-  getAccountBackReplyKeyboard(),
-);
-
-if (promptReply?.result?.message_id) {
-  await updateUserStateData(
-    db,
-    userId,
-    {
-      topupInputPromptMessageId:
-        promptReply.result.message_id,
-    },
+  return sendMessage(
+    botToken,
+    chatId,
+    promptText,
+    createCancelTopupKeyboard(),
   );
 }
-
-return promptReply;
 
 async function editPrompt(
   botToken,
@@ -290,28 +311,21 @@ export async function handleWalletTopupAmount(
     );
   }
 
-const inputPromptMessageId =
-  state?.data?.topupInputPromptMessageId ??
-  null;
-
-await Promise.allSettled([
-  inputPromptMessageId
-    ? deleteMessage(
-        botToken,
-        message.chat.id,
-        inputPromptMessageId,
-      )
-    : null,
-
-  message?.message_id
-    ? deleteMessage(
+  if (message?.message_id) {
+    try {
+      await deleteMessage(
         botToken,
         message.chat.id,
         message.message_id,
-      )
-    : null,
-]);
-  
+      );
+    } catch (error) {
+      console.warn(
+        'Could not delete wallet top-up amount message:',
+        error.message,
+      );
+    }
+  }
+
   try {
     const topup =
       await createWalletTopup(
@@ -373,7 +387,7 @@ await Promise.allSettled([
     paymentRows.push([
       {
         text:
-          '❌ لغو فاکتور',
+          '❌ لغو شارژ',
         callback_data:
           `wallet_topup_cancel:${topup.id}`,
       },
@@ -478,16 +492,10 @@ export async function cancelWalletTopupFromCallback(
       userId,
     );
 
-    await answerCallbackQuery(
+    return goToHome(
       botToken,
-      callbackQuery.id,
-    );
-
-    return sendMessage(
-      botToken,
-      chatId,
-      '❌ عملیات شارژ کیف پول لغو شد.',
-      getAccountBackReplyKeyboard(),
+      callbackQuery,
+      env,
     );
   }
 
@@ -541,15 +549,9 @@ export async function cancelWalletTopupFromCallback(
     userId,
   );
 
-  await answerCallbackQuery(
+  return goToHome(
     botToken,
-    callbackQuery.id,
-  );
-
-  return sendMessage(
-    botToken,
-    chatId,
-    '❌ فاکتور شارژ کیف پول لغو شد.',
-    getAccountBackReplyKeyboard(),
+    callbackQuery,
+    env,
   );
 }
