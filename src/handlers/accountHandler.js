@@ -232,12 +232,6 @@ export async function showAccount(
      * کیبورد برگشت را با یک پیام کوچک
      * جدا فعال می‌کنیم.
      */
-    await sendMessage(
-      botToken,
-      message.chat.id,
-      'برای بازگشت از دکمه زیر استفاده کنید.',
-      getAccountBackReplyKeyboard(),
-    );
 
     return accountMessage;
   } catch (error) {
