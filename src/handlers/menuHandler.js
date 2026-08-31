@@ -18,6 +18,10 @@ import {
   getEarnMoneyKeyboard,
 } from '../../keyboards/earnMoney.js';
 
+import {
+  getSupportKeyboard,
+} from '../../keyboards/support.js';
+
 export function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -111,9 +115,21 @@ export async function showSupportMenu(
     env.TELEGRAM_BOT_TOKEN,
     message.chat.id,
 
-    `❓ <b>راهنما و پشتیبانی</b>\n\n` +
-      `برای دریافت راهنمایی و پشتیبانی، با تیم EndMark در ارتباط باشید.`,
+    `🛟 <b>راهنما و پشتیبانی EndMark</b>\n\n` +
 
-    getMainMenuKeyboard(),
+      `اگر در خرید دوره، پرداخت، استفاده از ربات یا هر بخش دیگری از خدمات EndMark مشکلی دارید، می‌توانید از راه‌های زیر با ما در ارتباط باشید.\n\n` +
+
+      `📩 <b>پشتیبانی مستقیم:</b>\n` +
+      `برای ارتباط مستقیم با پشتیبانی، از دکمه زیر استفاده کنید.\n\n` +
+
+      `🤖 <b>ربات دستیار:</b>\n` +
+      `برای دریافت راهنمایی و استفاده از امکانات کمکی، می‌توانید وارد ربات دستیار EndMark شوید.\n\n` +
+
+      `🕶 <b>پیام ناشناس:</b>\n` +
+      `اگر ترجیح می‌دهید پیام خود را به‌صورت ناشناس ارسال کنید، از گزینه پیام ناشناس استفاده کنید.\n\n` +
+
+      `قبل از ارسال مشکل، در صورت امکان توضیح کامل و دقیق مشکل خود را ارسال کنید تا بررسی سریع‌تر انجام شود.`,
+
+    getSupportKeyboard(),
   );
 }
