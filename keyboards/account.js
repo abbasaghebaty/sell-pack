@@ -1,17 +1,10 @@
-/**
- * Account Keyboard
- *
- * مسیر:
- * keyboards/account.js
- */
-
 export const ACCOUNT_BUTTONS =
   Object.freeze({
     TOPUP:
       '💳 شارژ کیف پول',
 
     BACK:
-      '🔙',
+      '🔙 بازگشت',
   });
 
 export function getAccountKeyboard() {
@@ -37,6 +30,9 @@ export function getAccountBackReplyKeyboard() {
         {
           text:
             ACCOUNT_BUTTONS.BACK,
+
+          style:
+            'danger',
         },
       ],
     ],
