@@ -188,13 +188,25 @@ export async function startWalletTopup(
    * Reply Keyboard فقط یک دکمه:
    * 🔙
    */
-  return sendMessage(
-    botToken,
-    chatId,
-    'مبلغ را ارسال کنید.',
-    getAccountBackReplyKeyboard(),
+const promptReply = await sendMessage(
+  botToken,
+  chatId,
+  'مبلغ را ارسال کنید.',
+  getAccountBackReplyKeyboard(),
+);
+
+if (promptReply?.result?.message_id) {
+  await updateUserStateData(
+    db,
+    userId,
+    {
+      topupInputPromptMessageId:
+        promptReply.result.message_id,
+    },
   );
 }
+
+return promptReply;
 
 async function editPrompt(
   botToken,
