@@ -11,6 +11,7 @@ import {
 import {
   USER_STATES,
   setUserState,
+  updateUserStateData,
   clearUserState,
   getUserState,
 } from '../database/userStates.js';
