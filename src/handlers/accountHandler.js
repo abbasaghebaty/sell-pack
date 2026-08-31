@@ -5,7 +5,6 @@ import {
 
 import {
   getAccountKeyboard,
-  getAccountBackReplyKeyboard,
 } from '../../keyboards/account.js';
 
 import {
@@ -213,27 +212,12 @@ export async function showAccount(
         )}">ورود به کانال خصوصی</a>`;
     }
 
-    /*
-     * پیام اصلی حساب:
-     * فقط دکمه شیشه‌ای شارژ دارد.
-     */
-    const accountMessage =
-      await sendMessage(
-        botToken,
-        message.chat.id,
-        text,
-        getAccountKeyboard(),
-      );
-
-    /*
-     * چون Telegram اجازه نمی‌دهد
-     * ReplyKeyboard و InlineKeyboard
-     * همزمان روی یک پیام باشند،
-     * کیبورد برگشت را با یک پیام کوچک
-     * جدا فعال می‌کنیم.
-     */
-
-    return accountMessage;
+    return sendMessage(
+      botToken,
+      message.chat.id,
+      text,
+      getAccountKeyboard(),
+    );
   } catch (error) {
     console.error(
       'Account view error:',
@@ -245,7 +229,6 @@ export async function showAccount(
       botToken,
       message.chat.id,
       '❌ دریافت اطلاعات حساب انجام نشد. لطفاً دوباره تلاش کنید.',
-      getAccountBackReplyKeyboard(),
     );
   }
 }
