@@ -31,11 +31,23 @@ import {
   showMainMenu,
 } from './menuHandler.js';
 
-const MIN_TOPUP_TOMAN =
-  10_000;
+/*
+ * واحد ورودی کاربر:
+ *
+ * 20 = 20,000 تومان
+ *
+ * بنابراین:
+ * 10 = حداقل 10,000 تومان
+ * 50,000 = حداکثر 50,000,000 تومان
+ */
+const TOPUP_INPUT_MULTIPLIER =
+  1_000;
 
-const MAX_TOPUP_TOMAN =
-  50_000_000;
+const MIN_TOPUP_INPUT =
+  10;
+
+const MAX_TOPUP_INPUT =
+  50_000;
 
 function parseAmount(value) {
   const normalized =
@@ -97,6 +109,57 @@ function getChatId(source) {
     source?.message?.chat?.id ??
     null
   );
+}
+
+/*
+ * حذف کیبورد Reply قبلی.
+ *
+ * چون کیبورد Home متعلق به پیام قبلی است،
+ * صرفاً ویرایش پیام یا حذف پیام فاکتور
+ * آن را حذف نمی‌کند.
+ *
+ * این پیام موقت کیبورد را حذف می‌کند،
+ * سپس خود پیام موقت هم پاک می‌شود.
+ */
+async function hideReplyKeyboard(
+  botToken,
+  chatId,
+) {
+  try {
+    const result =
+      await sendMessage(
+        botToken,
+        chatId,
+        '\u2060',
+        {
+          remove_keyboard: true,
+        },
+      );
+
+    const messageId =
+      result?.result?.message_id ??
+      null;
+
+    if (messageId) {
+      try {
+        await deleteMessage(
+          botToken,
+          chatId,
+          messageId,
+        );
+      } catch (error) {
+        console.warn(
+          'Could not delete temporary keyboard message:',
+          error.message,
+        );
+      }
+    }
+  } catch (error) {
+    console.warn(
+      'Could not hide reply keyboard:',
+      error.message,
+    );
+  }
 }
 
 async function goToHome(
@@ -204,12 +267,22 @@ export async function startWalletTopup(
     );
   }
 
+  /*
+   * حذف کیبورد Home
+   * قبل از ورود به مرحله وارد کردن مبلغ.
+   */
+  await hideReplyKeyboard(
+    botToken,
+    chatId,
+  );
+
   const promptText =
     `💳 <b>شارژ کیف پول</b>\n\n` +
-    `مبلغی که می‌خواهید کیف پولتان را شارژ کنید، به تومان و <b>بدون سه صفر</b> وارد کنید.\n\n` +
+    `مبلغ موردنظر را به هزار تومان وارد کنید.\n\n` +
     `مثلاً برای شارژ <b>۲۰,۰۰۰ تومان</b> فقط بنویسید:\n\n` +
     `<code>20</code>\n\n` +
-    `حداقل مبلغ شارژ: <b>۱۰,۰۰۰ تومان</b>`;
+    `حداقل مبلغ شارژ: <b>۱۰,۰۰۰ تومان</b>\n` +
+    `حداکثر مبلغ شارژ: <b>۵۰,۰۰۰,۰۰۰ تومان</b>`;
 
   if (sourceMessageId) {
     return editMessageText(
@@ -271,25 +344,25 @@ export async function handleWalletTopupAmount(
     state?.data?.promptMessageId ??
     null;
 
-  const amount =
+  const inputAmount =
     parseAmount(
       message?.text,
     );
 
-  if (!amount) {
+  if (!inputAmount) {
     return editPrompt(
       botToken,
       message.chat.id,
       promptMessageId,
       `❌ <b>مبلغ واردشده معتبر نیست.</b>\n\n` +
-        `برای ۲۰,۰۰۰ تومان فقط بنویسید:\n\n` +
+        `مثلاً برای <b>۲۰,۰۰۰ تومان</b> فقط بنویسید:\n\n` +
         `<code>20</code>`,
     );
   }
 
   if (
-    amount <
-    MIN_TOPUP_TOMAN
+    inputAmount <
+    MIN_TOPUP_INPUT
   ) {
     return editPrompt(
       botToken,
@@ -300,8 +373,8 @@ export async function handleWalletTopupAmount(
   }
 
   if (
-    amount >
-    MAX_TOPUP_TOMAN
+    inputAmount >
+    MAX_TOPUP_INPUT
   ) {
     return editPrompt(
       botToken,
@@ -311,6 +384,24 @@ export async function handleWalletTopupAmount(
     );
   }
 
+  /*
+   * تبدیل ورودی:
+   *
+   * 20
+   * ↓
+   * 20,000 تومان
+   * ↓
+   * createWalletTopup
+   * ↓
+   * 200,000 ریال
+   */
+  const amountToman =
+    inputAmount *
+    TOPUP_INPUT_MULTIPLIER;
+
+  /*
+   * حذف پیام کاربر بعد از معتبر بودن مبلغ.
+   */
   if (message?.message_id) {
     try {
       await deleteMessage(
@@ -331,7 +422,7 @@ export async function handleWalletTopupAmount(
       await createWalletTopup(
         db,
         message.from.id,
-        amount,
+        amountToman,
       );
 
     let invoice;
@@ -395,7 +486,7 @@ export async function handleWalletTopupAmount(
 
     const invoiceText =
       `💳 <b>فاکتور شارژ کیف پول</b>\n\n` +
-      `مبلغ شارژ: <b>${amount.toLocaleString(
+      `مبلغ شارژ: <b>${amountToman.toLocaleString(
         'fa-IR',
       )} تومان</b>\n` +
       `مبلغ قابل پرداخت: <b>${Math.floor(
@@ -407,7 +498,7 @@ export async function handleWalletTopupAmount(
         expiry,
       )}</b>\n\n` +
       `لطفاً مبلغ دقیق فاکتور را پرداخت کنید.\n\n` +
-      `پس از تأیید پرداخت، مبلغ <b>${amount.toLocaleString(
+      `پس از تأیید پرداخت، مبلغ <b>${amountToman.toLocaleString(
         'fa-IR',
       )} تومان</b> به کیف پول شما اضافه می‌شود.`;
 
