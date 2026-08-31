@@ -4,7 +4,7 @@ export const ACCOUNT_BUTTONS =
       '💳 شارژ کیف پول',
 
     BACK:
-      '🔙 بازگشت',
+      '🔙',
   });
 
 export function getAccountKeyboard() {
