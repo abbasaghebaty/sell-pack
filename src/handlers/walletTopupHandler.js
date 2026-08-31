@@ -1,6 +1,7 @@
 import {
   sendMessage,
   editMessageText,
+  deleteMessage,
   answerCallbackQuery,
 } from '../api/telegram.js';
 
