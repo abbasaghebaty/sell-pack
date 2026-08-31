@@ -290,6 +290,28 @@ export async function handleWalletTopupAmount(
     );
   }
 
+const inputPromptMessageId =
+  state?.data?.topupInputPromptMessageId ??
+  null;
+
+await Promise.allSettled([
+  inputPromptMessageId
+    ? deleteMessage(
+        botToken,
+        message.chat.id,
+        inputPromptMessageId,
+      )
+    : null,
+
+  message?.message_id
+    ? deleteMessage(
+        botToken,
+        message.chat.id,
+        message.message_id,
+      )
+    : null,
+]);
+  
   try {
     const topup =
       await createWalletTopup(
