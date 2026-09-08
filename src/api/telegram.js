@@ -121,6 +121,32 @@ export function sendMessage(
   );
 }
 
+export function sendPhoto(
+  botToken,
+  chatId,
+  photo,
+  caption = '',
+  replyMarkup = null
+) {
+  const payload = {
+    chat_id: chatId,
+    photo,
+    caption,
+    parse_mode: 'HTML',
+  };
+
+  if (replyMarkup) {
+    payload.reply_markup =
+      replyMarkup;
+  }
+
+  return telegramRequest(
+    botToken,
+    'sendPhoto',
+    payload
+  );
+}
+
 export function answerCallbackQuery(
   botToken,
   callbackQueryId,
@@ -329,6 +355,7 @@ export function getMe(
 
 export default {
   sendMessage,
+  sendPhoto,
   answerCallbackQuery,
   editMessageText,
   deleteMessage,
