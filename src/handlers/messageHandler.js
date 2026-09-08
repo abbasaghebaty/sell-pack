@@ -223,8 +223,6 @@ export default async function handleMessage(
 
   if (
     text ===
-    MAIN_MENU_BUTTONS.EARN_MONEY ||
-    text ===
     ACCOUNT_BUTTONS.EARN_MONEY
   ) {
     return showEarnMoneyMenu(
