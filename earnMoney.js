@@ -17,15 +17,13 @@ export function getEarnMoneyKeyboard() {
     keyboard: [
       [
         {
-          text:
-            EARN_MONEY_BUTTONS.GET_BANNER,
+          text: EARN_MONEY_BUTTONS.GET_BANNER,
           style: 'success',
         },
       ],
       [
         {
-          text:
-            EARN_MONEY_BUTTONS.BACK,
+          text: EARN_MONEY_BUTTONS.BACK,
           style: 'danger',
         },
       ],
@@ -36,24 +34,22 @@ export function getEarnMoneyKeyboard() {
 }
 
 /*
- * Legacy admin-application keyboards are kept so older internal modules
- * remain import-safe. They are no longer reachable from the user-facing
- * earning flow.
+ * Legacy admin-application keyboards are intentionally kept because
+ * adminApplicationHandler.js still imports them. They are not exposed
+ * by the earning menu anymore.
  */
 export function getAdminApplicationStartKeyboard() {
   return {
     keyboard: [
       [
         {
-          text:
-            EARN_MONEY_BUTTONS.COURSE_PURCHASED,
+          text: EARN_MONEY_BUTTONS.COURSE_PURCHASED,
           style: 'success',
         },
       ],
       [
         {
-          text:
-            EARN_MONEY_BUTTONS.BACK,
+          text: EARN_MONEY_BUTTONS.BACK,
           style: 'danger',
         },
       ],
@@ -68,8 +64,7 @@ export function getAdminApplicationBackKeyboard() {
     keyboard: [
       [
         {
-          text:
-            EARN_MONEY_BUTTONS.BACK,
+          text: EARN_MONEY_BUTTONS.BACK,
           style: 'danger',
         },
       ],
@@ -91,8 +86,7 @@ export function getAdminApplicationPhoneKeyboard() {
       ],
       [
         {
-          text:
-            EARN_MONEY_BUTTONS.BACK,
+          text: EARN_MONEY_BUTTONS.BACK,
           style: 'danger',
         },
       ],

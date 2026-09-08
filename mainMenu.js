@@ -7,7 +7,6 @@
 
 export const MAIN_MENU_BUTTONS = Object.freeze({
   BUY_COURSE: '🛍 خرید دوره',
-  EARN_MONEY: '💰 کسب درآمد',
   ACCOUNT: '👤 حساب من',
   SUPPORT: '❓ راهنما و پشتیبانی',
 });
