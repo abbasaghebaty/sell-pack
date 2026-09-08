@@ -29,21 +29,14 @@ import {
 
 import {
   EARN_MONEY_BUTTONS,
-  getAdminApplicationStartKeyboard,
   getEarnMoneyKeyboard,
 } from '../../keyboards/earnMoney.js';
 
 import {
   USER_STATES,
-  setUserState,
   getUserState,
   clearUserState,
 } from '../database/userStates.js';
-
-import {
-  startAdminApplication,
-  handleAdminApplication,
-} from './adminApplicationHandler.js';
 
 import {
   handleAdminRejectionReason,
@@ -58,16 +51,9 @@ import {
   showMainMenu,
   showCourseMenu,
   showEarnMoneyMenu,
+  sendReferralBanner,
   showSupportMenu,
 } from './menuHandler.js';
-
-const APPLICATION_STATES =
-  new Set([
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME,
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_LAST_NAME,
-    USER_STATES.WAITING_FOR_ADMIN_APPLICATION_PHONE,
-  ]);
 
 async function clearStateSafely(
   db,
@@ -142,7 +128,8 @@ export default async function handleMessage(
    */
   if (
     text === ACCOUNT_BUTTONS.BACK ||
-    text === COURSE_MENU_BUTTONS.BACK
+    text === COURSE_MENU_BUTTONS.BACK ||
+    text === EARN_MONEY_BUTTONS.BACK
   ) {
     await clearStateSafely(
       db,
@@ -176,10 +163,6 @@ export default async function handleMessage(
     userState?.state ??
     null;
 
-  const currentData =
-    userState?.data ??
-    {};
-
   /*
    * Wallet top-up input
    */
@@ -203,43 +186,6 @@ export default async function handleMessage(
       env,
       db,
       userState,
-    );
-  }
-
-  if (
-    APPLICATION_STATES.has(
-      currentState,
-    )
-  ) {
-    if (
-      currentState ===
-      USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION
-    ) {
-      if (
-        text ===
-        EARN_MONEY_BUTTONS.COURSE_PURCHASED
-      ) {
-        return startAdminApplication(
-          message,
-          env,
-          db,
-        );
-      }
-
-      return sendMessage(
-        botToken,
-        chatId,
-        `لطفاً ابتدا گزینه <b>دوره را خریداری کرده‌ام</b> را انتخاب کنید.`,
-        getAdminApplicationStartKeyboard(),
-      );
-    }
-
-    return handleAdminApplication(
-      message,
-      env,
-      db,
-      currentState,
-      currentData,
     );
   }
 
@@ -277,9 +223,21 @@ export default async function handleMessage(
 
   if (
     text ===
-    MAIN_MENU_BUTTONS.EARN_MONEY
+    MAIN_MENU_BUTTONS.EARN_MONEY ||
+    text ===
+    ACCOUNT_BUTTONS.EARN_MONEY
   ) {
     return showEarnMoneyMenu(
+      message,
+      env,
+    );
+  }
+
+  if (
+    text ===
+    EARN_MONEY_BUTTONS.GET_BANNER
+  ) {
+    return sendReferralBanner(
       message,
       env,
     );
@@ -293,50 +251,6 @@ export default async function handleMessage(
       message,
       env,
       db,
-    );
-  }
-
-  if (
-    text ===
-    EARN_MONEY_BUTTONS.APPLY_ADMIN
-  ) {
-    if (!db) {
-      return sendMessage(
-        botToken,
-        chatId,
-        '❌ دیتابیس در دسترس نیست. ثبت درخواست فعلاً امکان‌پذیر نیست.',
-        getEarnMoneyKeyboard(),
-      );
-    }
-
-    try {
-      await setUserState(
-        db,
-        userId,
-        USER_STATES.WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION,
-        {},
-      );
-    } catch (error) {
-      console.error(
-        'Failed to save application state:',
-        error.message,
-      );
-
-      return sendMessage(
-        botToken,
-        chatId,
-        '❌ در ذخیره وضعیت فرم مشکلی پیش آمد. لطفاً دوباره تلاش کنید.',
-        getEarnMoneyKeyboard(),
-      );
-    }
-
-    return sendMessage(
-      botToken,
-      chatId,
-      `📝 <b>ثبت درخواست حساب ادمینی</b>\n\n` +
-        `برای ثبت درخواست همکاری با EndMark، ابتدا باید دوره را خریداری کرده باشید.\n\n` +
-        `اگر دوره را خریداری کرده‌اید، گزینه زیر را انتخاب کنید.`,
-      getAdminApplicationStartKeyboard(),
     );
   }
 

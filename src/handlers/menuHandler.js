@@ -4,6 +4,8 @@
 
 import {
   sendMessage,
+  getMe,
+  sendPhoto,
 } from '../api/telegram.js';
 
 import {
@@ -21,6 +23,10 @@ import {
 import {
   getSupportKeyboard,
 } from '../../keyboards/support.js';
+
+import {
+  buildReferralBannerUrl,
+} from '../services/referralBannerService.js';
 
 export function escapeHtml(value) {
   return String(value ?? '')
@@ -45,6 +51,31 @@ function normalizeDisplayName(
     name.charAt(0).toUpperCase() +
     name.slice(1)
   );
+}
+
+async function getReferralLink(
+  message,
+  env,
+) {
+  const botToken =
+    env?.TELEGRAM_BOT_TOKEN;
+
+  const telegramId =
+    String(message.from.id);
+
+  const me =
+    await getMe(botToken);
+
+  const botUsername =
+    me?.result?.username;
+
+  if (!botUsername) {
+    throw new Error(
+      'Telegram bot username is unavailable.',
+    );
+  }
+
+  return `https://t.me/${botUsername}?start=${telegramId}`;
 }
 
 export async function showMainMenu(
@@ -98,13 +129,61 @@ export async function showEarnMoneyMenu(
     message.chat.id,
 
     `💰 <b>کسب درآمد با EndMark</b>\n\n` +
-      `اگر قصد دارید به عنوان ادمین با EndMark همکاری کنید، می‌توانید درخواست ثبت حساب ادمینی خود را ارسال کنید.\n\n` +
-      `برای ثبت درخواست همکاری، ابتدا باید دوره آموزشی را خریداری کرده باشید.\n\n` +
-      `پس از ارسال درخواست، اطلاعات شما توسط تیم EndMark بررسی خواهد شد.\n\n` +
-      `برای شروع، گزینه زیر را انتخاب کنید.`,
+      `با سیستم همکاری EndMark می‌توانید از معرفی دوره درآمد کسب کنید.\n\n` +
+      `روش کار ساده است:\n` +
+      `۱. لینک دعوت اختصاصی خودتان را برای دیگران ارسال کنید.\n` +
+      `۲. فرد معرفی‌شده از طریق لینک شما وارد ربات شود.\n` +
+      `۳. اگر همان فرد دوره خریداری کند، <b>۲۰٪ از مبلغ خرید</b> به‌عنوان کمیسیون برای شما در نظر گرفته می‌شود.\n\n` +
+      `برای تبلیغ راحت‌تر، می‌توانید بنر اختصاصی خودتان را همراه با لینک دعوت دریافت کنید.`,
 
     getEarnMoneyKeyboard(),
   );
+}
+
+export async function sendReferralBanner(
+  message,
+  env,
+) {
+  const botToken =
+    env?.TELEGRAM_BOT_TOKEN;
+
+  try {
+    const referralLink =
+      await getReferralLink(
+        message,
+        env,
+      );
+
+    const bannerUrl =
+      buildReferralBannerUrl(
+        referralLink,
+      );
+
+    return sendPhoto(
+      botToken,
+      message.chat.id,
+      bannerUrl,
+      `🖼 <b>بنر اختصاصی شما</b>\n\n` +
+        `لینک دعوت شما:\n${escapeHtml(
+          referralLink,
+        )}\n\n` +
+        `این لینک را همراه بنر برای مخاطبان خود ارسال کنید.`,
+      getEarnMoneyKeyboard(),
+    );
+  } catch (error) {
+    console.error(
+      'Referral banner error:',
+      error.message,
+      error.stack,
+    );
+
+    return sendMessage(
+      botToken,
+      message.chat.id,
+      '❌ دریافت بنر انجام نشد. لطفاً دوباره تلاش کنید.',
+      getEarnMoneyKeyboard(),
+    );
+  }
 }
 
 export async function showSupportMenu(
