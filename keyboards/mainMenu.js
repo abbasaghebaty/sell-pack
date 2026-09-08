@@ -7,7 +7,6 @@
 
 export const MAIN_MENU_BUTTONS = Object.freeze({
   BUY_COURSE: '🛍 خرید دوره',
-  EARN_MONEY: '💰 کسب درآمد',
   ACCOUNT: '👤 حساب من',
   SUPPORT: '❓ راهنما و پشتیبانی',
 });
@@ -16,10 +15,6 @@ export function getMainMenuKeyboard() {
   return {
     keyboard: [
       [
-        {
-          text: MAIN_MENU_BUTTONS.EARN_MONEY,
-          style: 'success',
-        },
         {
           text: MAIN_MENU_BUTTONS.BUY_COURSE,
           style: 'primary',
