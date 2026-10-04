@@ -6,7 +6,7 @@
  */
 
 const BLUPAL_BASE_URL =
-  'https://blupal.net/api';
+  'https://blupal.top/api';
 
 const REQUEST_TIMEOUT = 15_000;
 
