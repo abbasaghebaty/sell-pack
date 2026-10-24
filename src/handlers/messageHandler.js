@@ -39,15 +39,6 @@ import {
 } from '../database/userStates.js';
 
 import {
-  handleAdminRejectionReason,
-} from './adminApplicationReviewHandler.js';
-
-import {
-  startAdminVerification,
-  handleAdminVerificationInput,
-} from './adminVerificationHandler.js';
-
-import {
   showMainMenu,
   showCourseMenu,
   showEarnMoneyMenu,
@@ -177,26 +168,17 @@ export default async function handleMessage(
     );
   }
 
+  /*
+   * هر state دیگری (مثلاً stateهای قدیمی بخش ادمین که حذف شده)
+   * پاک می‌شود تا کاربر در حالت ناشناخته گیر نکند.
+   */
   if (
-    currentState ===
-    USER_STATES.WAITING_FOR_ADMIN_REJECTION_REASON
+    currentState &&
+    currentState !== USER_STATES.IDLE
   ) {
-    return handleAdminRejectionReason(
-      message,
-      env,
+    await clearStateSafely(
       db,
-      userState,
-    );
-  }
-
-  if (
-    currentState ===
-    USER_STATES.WAITING_FOR_ADMIN_VERIFICATION
-  ) {
-    return handleAdminVerificationInput(
-      message,
-      env,
-      db,
+      userId,
     );
   }
 
@@ -207,17 +189,6 @@ export default async function handleMessage(
     return showCourseMenu(
       message,
       env,
-    );
-  }
-
-  if (
-    text ===
-    COURSE_MENU_BUTTONS.VERIFY_ADMIN
-  ) {
-    return startAdminVerification(
-      message,
-      env,
-      db,
     );
   }
 

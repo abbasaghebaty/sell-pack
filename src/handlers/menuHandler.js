@@ -4,7 +4,7 @@ import { getCourseMenuKeyboard } from "../../keyboards/courseMenu.js";
 import { getEarnMoneyKeyboard } from "../../keyboards/earnMoney.js";
 import { getSupportKeyboard } from "../../keyboards/support.js";
 import { buildReferralBannerUrl } from "../services/referralBannerService.js";
-import { getReferralStats } from "../database/referrals.js";
+import { DEFAULT_COMMISSION_PERCENT, getReferralProfile, getReferralStats } from "../database/referrals.js";
 
 export function escapeHtml(value) {
   return String(value ?? "")
@@ -32,9 +32,23 @@ async function getBotUsername(botToken) {
   return username;
 }
 
-export async function getReferralLink(message, env) {
+// Invite code (= the user's numeric Telegram id) and commission percent,
+// read from the users table. Falls back to the defaults if the DB is down.
+async function loadReferralProfile(message, env) {
+  const fallback = { code: String(message.from.id), active: true, percent: DEFAULT_COMMISSION_PERCENT };
+  if (!env?.DB) return fallback;
+  try {
+    return await getReferralProfile(env.DB, message.from.id);
+  } catch (error) {
+    console.error("Referral profile error:", error.message);
+    return fallback;
+  }
+}
+
+export async function getReferralLink(message, env, profile = null) {
   const username = await getBotUsername(env?.TELEGRAM_BOT_TOKEN);
-  return `https://t.me/${username}?start=${message.from.id}`;
+  const code = profile?.code || message.from.id;
+  return `https://t.me/${username}?start=${code}`;
 }
 
 export async function showMainMenu(message, env) {
@@ -55,18 +69,18 @@ export async function showCourseMenu(message, env) {
   return sendMessage(
     env.TELEGRAM_BOT_TOKEN,
     message.chat.id,
-    `🛍 <b>خرید دوره</b>
+    `🛍 <b>خرید اشتراک</b>
 
-قبل از هرگونه خرید یا پرداخت، ابتدا از معتبر بودن ادمینی که قصد همکاری با او را دارید مطمئن شوید.
+برای تهیه یا تمدید اشتراک، از دکمه «خرید اشتراک» در پایین استفاده کنید.
 
-برای جلوگیری از همکاری با افراد جعلی، می‌توانید اطلاعات ادمین را از طریق سیستم <b>EndMark</b> استعلام بگیرید.
-
-🔎 از دکمه زیر برای استعلام ادمین استفاده کنید.`,
+پس از تأیید پرداخت، اشتراک فقط برای همین حساب تلگرام فعال می‌شود.`,
     getCourseMenuKeyboard()
   );
 }
 
 export async function showEarnMoneyMenu(message, env) {
+  const profile = await loadReferralProfile(message, env);
+  const percentFa = profile.percent.toLocaleString("fa-IR");
   let statsText = "";
   try {
     if (env?.DB) {
@@ -92,7 +106,7 @@ export async function showEarnMoneyMenu(message, env) {
 روش کار ساده است:
 ۱. لینک دعوت اختصاصی خودتان را برای دیگران ارسال کنید.
 ۲. فرد معرفی‌شده باید (به‌عنوان کاربر جدید) از طریق لینک شما وارد ربات شود.
-۳. اگر همان فرد دوره را خریداری کند، <b>۲۰٪ از مبلغ خرید</b> به‌عنوان کمیسیون به کیف پول شما اضافه می‌شود.
+۳. اگر همان فرد دوره را خریداری کند، <b>${percentFa}٪ از مبلغ خرید</b> به‌عنوان کمیسیون به کیف پول شما اضافه می‌شود.
 
 برای تبلیغ راحت‌تر، از دکمه زیر بنر اختصاصی خودتان را دریافت کنید؛ لینک دعوت شما داخل بنر قرار می‌گیرد.${statsText}`,
     getEarnMoneyKeyboard()
@@ -117,9 +131,12 @@ export async function sendReferralBanner(message, env) {
   const botToken = env?.TELEGRAM_BOT_TOKEN;
   const chatId = message.chat.id;
 
+  const profile = await loadReferralProfile(message, env);
+  const percentFa = profile.percent.toLocaleString("fa-IR");
+
   let referralLink;
   try {
-    referralLink = await getReferralLink(message, env);
+    referralLink = await getReferralLink(message, env, profile);
   } catch (error) {
     console.error("Referral link error:", error.message, error.stack);
     return sendMessage(
@@ -135,11 +152,11 @@ export async function sendReferralBanner(message, env) {
 لینک دعوت شما:
 ${escapeHtml(referralLink)}
 
-این لینک را همراه بنر برای مخاطبان خود ارسال کنید. به‌ازای خرید هر دعوت‌شده، ۲۰٪ کمیسیون به کیف پول شما اضافه می‌شود.`;
+این لینک را همراه بنر برای مخاطبان خود ارسال کنید. به‌ازای خرید هر دعوت‌شده، ${percentFa}٪ کمیسیون به کیف پول شما اضافه می‌شود.`;
   const keyboard = buildShareKeyboard(referralLink);
 
   try {
-    return await sendPhoto(botToken, chatId, buildReferralBannerUrl(referralLink), caption, keyboard);
+    return await sendPhoto(botToken, chatId, buildReferralBannerUrl(referralLink, profile.percent), caption, keyboard);
   } catch (error) {
     // If the image service is down the user still gets a working link.
     console.error("Referral banner photo failed:", error.message);

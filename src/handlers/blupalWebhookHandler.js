@@ -170,7 +170,7 @@ export async function handleBlupalWebhook(
        * فقط همین مبلغ وارد Wallet می‌شود.
        */
       await creditWallet(
-        env.WALLET_DB,
+        db,
         topup.telegram_id,
         Number(
           topup.amount_toman,

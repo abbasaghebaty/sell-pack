@@ -63,7 +63,7 @@ export async function showAccount(
     env?.TELEGRAM_BOT_TOKEN;
 
   const walletDb =
-    env?.WALLET_DB;
+    db;
 
   const telegramUser =
     message?.from;
