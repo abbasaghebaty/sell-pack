@@ -60,7 +60,6 @@ export default {
           ok: true,
           service: "endmark-bot",
           database: Boolean(env.DB),
-          wallet_database: Boolean(env.WALLET_DB),
           telegram: Boolean(env.TELEGRAM_BOT_TOKEN),
           blupal: Boolean(env.BLUPAL_API_KEY)
         });
