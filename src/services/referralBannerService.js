@@ -5,15 +5,16 @@ function encodeChartConfig(config) {
   return encodeURIComponent(JSON.stringify(config));
 }
 
-export function buildReferralBannerUrl(referralLink) {
+export function buildReferralBannerUrl(referralLink, percent = 20) {
   const safeReferralLink = String(referralLink ?? "");
+  const commission = Number.isFinite(Number(percent)) ? Number(percent) : 20;
   const config = {
     type: "doughnut",
     data: {
-      labels: ["20% commission for you", "80% course price"],
+      labels: [`${commission}% commission for you`, `${100 - commission}% course price`],
       datasets: [
         {
-          data: [20, 80],
+          data: [commission, 100 - commission],
           backgroundColor: ["#22c55e", "#374151"],
           borderWidth: 0
         }
@@ -35,7 +36,7 @@ export function buildReferralBannerUrl(referralLink) {
           color: "#ffffff",
           text: [
             "EndMark Partner Program",
-            "Invite friends and earn 20% commission",
+            `Invite friends and earn ${commission}% commission`,
             safeReferralLink
           ],
           font: { size: 30, weight: "bold" },

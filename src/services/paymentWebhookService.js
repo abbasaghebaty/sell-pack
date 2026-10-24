@@ -109,9 +109,9 @@ export async function processPaymentWebhook(db, env, parsed) {
   // 2) Wallet ledger entry (bookkeeping only).
   try {
     const walletAmountToman = Number(approvedPurchase.amount) / 10;
-    if (env.WALLET_DB && Number.isInteger(walletAmountToman) && walletAmountToman > 0) {
+    if (db && Number.isInteger(walletAmountToman) && walletAmountToman > 0) {
       await settleCoursePaymentToWallet(
-        env.WALLET_DB,
+        db,
         approvedPurchase.telegram_id,
         walletAmountToman,
         parsed.invoiceId

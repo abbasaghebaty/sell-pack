@@ -1,27 +1,36 @@
 import { sendMessage } from "../api/telegram.js";
 import { creditWallet } from "./walletService.js";
-import { getReferrerTelegramId, insertReferralCommission } from "../database/referrals.js";
+import {
+  DEFAULT_COMMISSION_PERCENT,
+  getReferrerTelegramId,
+  getReferralProfile,
+  insertReferralCommission
+} from "../database/referrals.js";
 
-export const REFERRAL_COMMISSION_PERCENT = 20;
+export const REFERRAL_COMMISSION_PERCENT = DEFAULT_COMMISSION_PERCENT;
 
-export function calculateCommissionToman(purchaseAmountRial) {
+export function calculateCommissionToman(purchaseAmountRial, percent = REFERRAL_COMMISSION_PERCENT) {
   const toman = Math.floor(Number(purchaseAmountRial) / 10);
   if (!Number.isFinite(toman) || toman <= 0) return 0;
-  return Math.floor((toman * REFERRAL_COMMISSION_PERCENT) / 100);
+  return Math.floor((toman * Number(percent)) / 100);
 }
 
 // Safe to call more than once for the same purchase (wallet credit and the
 // commission row are both keyed by purchase id).
 export async function awardReferralCommission(db, env, purchase) {
-  if (!db || !env?.WALLET_DB || !purchase?.id || !purchase?.telegram_id) return null;
+  if (!db || !purchase?.id || !purchase?.telegram_id) return null;
 
   const referrerId = await getReferrerTelegramId(db, purchase.telegram_id);
   if (!referrerId) return null;
 
-  const amountToman = calculateCommissionToman(purchase.amount);
+  // The referrer's own percent (default 20) and active flag.
+  const profile = await getReferralProfile(db, referrerId);
+  if (!profile.active) return null;
+
+  const amountToman = calculateCommissionToman(purchase.amount, profile.percent);
   if (amountToman <= 0) return null;
 
-  await creditWallet(env.WALLET_DB, referrerId, amountToman, {
+  await creditWallet(db, referrerId, amountToman, {
     type: "referral_commission",
     referenceType: "referral_commission",
     referenceId: String(purchase.id),
@@ -32,7 +41,8 @@ export async function awardReferralCommission(db, env, purchase) {
     purchaseId: purchase.id,
     referrerId,
     referredId: purchase.telegram_id,
-    amountToman
+    amountToman,
+    commissionPercent: profile.percent
   });
 
   if (inserted) {
