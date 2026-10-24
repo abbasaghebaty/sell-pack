@@ -7,12 +7,12 @@ import handleCommand from '../handlers/commandHandler.js';
 import handleMessage from '../handlers/subscriptionMessageHandler.js';
 
 import {
-  handleAdminApplicationCallback,
-} from '../handlers/adminApplicationReviewHandler.js';
+  handleCourseJoinRequest,
+} from '../handlers/courseJoinRequestHandler.js';
 
 import {
-  handleCourseJoinRequest,
-} from '../handlers/courseAccessHandler.js';
+  answerCallbackQuery,
+} from '../api/telegram.js';
 
 import {
   startWalletTopup,
@@ -95,14 +95,20 @@ export async function routeTelegramUpdate(
     }
 
     /*
-     * سایر callbackها:
-     * admin review
+     * سایر callbackها (ناشناخته یا قدیمی):
+     * فقط پاسخ می‌دهیم تا دکمه در تلگرام در حالت loading نماند.
      */
-    await handleAdminApplicationCallback(
-      callback,
-      env,
-      db,
-    );
+    try {
+      await answerCallbackQuery(
+        env.TELEGRAM_BOT_TOKEN,
+        callback.id,
+      );
+    } catch (error) {
+      console.error(
+        'Unknown callback answer error:',
+        error.message,
+      );
+    }
 
     return;
   }
