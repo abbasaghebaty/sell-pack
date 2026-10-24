@@ -45,6 +45,13 @@ export async function ensureUser(
   const isBot =
     telegramUser.is_bot ? 1 : 0;
 
+  /*
+   * کد دعوت هر کاربر = آیدی عددی تلگرام خودش.
+   * از لحظه‌ی اولین استارت برای همه فعال است (چه خرید کرده چه نه).
+   */
+  const referralCode =
+    String(telegramId);
+
 
   const existingUser =
     await db
@@ -73,9 +80,10 @@ export async function ensureUser(
             first_name,
             last_name,
             language_code,
-            is_bot
+            is_bot,
+            referral_code
           )
-          VALUES (?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `)
         .bind(
           telegramId,
@@ -83,7 +91,8 @@ export async function ensureUser(
           firstName,
           lastName,
           languageCode,
-          isBot
+          isBot,
+          referralCode
         )
         .run();
 
@@ -93,6 +102,8 @@ export async function ensureUser(
         null,
 
       telegramId,
+
+      referralCode,
 
       isNew: true,
     };
@@ -111,6 +122,7 @@ export async function ensureUser(
         last_name = ?,
         language_code = ?,
         is_bot = ?,
+        referral_code = COALESCE(referral_code, ?),
         updated_at = CURRENT_TIMESTAMP
       WHERE telegram_id = ?
     `)
@@ -120,6 +132,7 @@ export async function ensureUser(
       lastName,
       languageCode,
       isBot,
+      referralCode,
       telegramId
     )
     .run();
@@ -129,6 +142,8 @@ export async function ensureUser(
     id: existingUser.id,
 
     telegramId,
+
+    referralCode,
 
     isNew: false,
   };

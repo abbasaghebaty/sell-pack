@@ -12,26 +12,8 @@ export const USER_STATES = Object.freeze({
   IDLE:
     'idle',
 
-  WAITING_FOR_ADMIN_VERIFICATION:
-    'waiting_for_admin_verification',
-
   WAITING_FOR_WALLET_TOPUP_AMOUNT:
     'waiting_for_wallet_topup_amount',
-
-  WAITING_FOR_ADMIN_APPLICATION_CONFIRMATION:
-    'waiting_for_admin_application_confirmation',
-
-  WAITING_FOR_ADMIN_APPLICATION_FIRST_NAME:
-    'waiting_for_admin_application_first_name',
-
-  WAITING_FOR_ADMIN_APPLICATION_LAST_NAME:
-    'waiting_for_admin_application_last_name',
-
-  WAITING_FOR_ADMIN_APPLICATION_PHONE:
-    'waiting_for_admin_application_phone',
-
-  WAITING_FOR_ADMIN_REJECTION_REASON:
-    'waiting_for_admin_rejection_reason',
 });
 
 export async function getUserState(

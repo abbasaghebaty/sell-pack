@@ -1,19 +1,61 @@
+// Default commission (percent of the purchase) for every referrer.
+// Each user can get a different value later through
+// users.referral_commission_percent.
+export const DEFAULT_COMMISSION_PERCENT = 20;
+
 function toId(value) {
   const n = Number(value);
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
-export async function registerReferral(db, referrerTelegramId, referredTelegramId) {
-  const referrerId = toId(referrerTelegramId);
+function normalizePercent(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n <= 100 ? n : DEFAULT_COMMISSION_PERCENT;
+}
+
+// Invite code / active flag / commission percent of one user.
+// The code is the user's own numeric Telegram id.
+export async function getReferralProfile(db, telegramId) {
+  const id = toId(telegramId);
+  const fallback = {
+    code: String(telegramId ?? ""),
+    active: false,
+    percent: DEFAULT_COMMISSION_PERCENT
+  };
+  if (!db || !id) return fallback;
+
+  const row = await db
+    .prepare(
+      `SELECT referral_code, referral_active, referral_commission_percent
+         FROM users WHERE telegram_id = ? LIMIT 1`
+    )
+    .bind(id)
+    .first();
+  if (!row) return fallback;
+
+  return {
+    code: String(row.referral_code || id),
+    active: Number(row.referral_active) === 1,
+    percent: normalizePercent(row.referral_commission_percent)
+  };
+}
+
+// Attach a newly started user to the owner of the invite code.
+// Stores the invited user's numeric id in the referrals table (once only).
+export async function registerReferral(db, referralCode, referredTelegramId) {
+  const code = String(referralCode ?? "").trim();
   const referredId = toId(referredTelegramId);
-  if (!referrerId || !referredId) return { registered: false, reason: "invalid" };
-  if (referrerId === referredId) return { registered: false, reason: "self" };
+  if (!/^\d{1,20}$/.test(code) || !referredId) return { registered: false, reason: "invalid" };
 
   const referrer = await db
-    .prepare("SELECT id FROM users WHERE telegram_id = ? LIMIT 1")
-    .bind(referrerId)
+    .prepare("SELECT telegram_id, referral_active FROM users WHERE referral_code = ? LIMIT 1")
+    .bind(code)
     .first();
   if (!referrer) return { registered: false, reason: "unknown_referrer" };
+  if (Number(referrer.referral_active) !== 1) return { registered: false, reason: "inactive_referrer" };
+
+  const referrerId = Number(referrer.telegram_id);
+  if (referrerId === referredId) return { registered: false, reason: "self" };
 
   const result = await db
     .prepare(
@@ -23,7 +65,7 @@ export async function registerReferral(db, referrerTelegramId, referredTelegramI
     .run();
 
   return result?.meta?.changes
-    ? { registered: true, reason: null }
+    ? { registered: true, reason: null, referrerId }
     : { registered: false, reason: "already_referred" };
 }
 
@@ -35,14 +77,17 @@ export async function getReferrerTelegramId(db, referredTelegramId) {
   return row?.referrer_telegram_id ?? null;
 }
 
-export async function insertReferralCommission(db, { purchaseId, referrerId, referredId, amountToman }) {
+export async function insertReferralCommission(
+  db,
+  { purchaseId, referrerId, referredId, amountToman, commissionPercent = DEFAULT_COMMISSION_PERCENT }
+) {
   const result = await db
     .prepare(
       `INSERT OR IGNORE INTO referral_commissions
-         (purchase_id, referrer_telegram_id, referred_telegram_id, amount_toman)
-       VALUES (?, ?, ?, ?)`
+         (purchase_id, referrer_telegram_id, referred_telegram_id, commission_percent, amount_toman)
+       VALUES (?, ?, ?, ?, ?)`
     )
-    .bind(purchaseId, Number(referrerId), Number(referredId), amountToman)
+    .bind(purchaseId, Number(referrerId), Number(referredId), commissionPercent, amountToman)
     .run();
   return Boolean(result?.meta?.changes);
 }
